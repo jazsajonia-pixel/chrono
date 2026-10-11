@@ -1,9 +1,8 @@
 # Chrono
 
-> The first AI development environment built for developers who code from their phone.
+> A mobile-first AI-assisted development workspace for GitHub projects.
 
-A mobile-first web IDE and AI coding agent: connect GitHub, pick a repository, ask the AI for a change,
-review the diff, preview the real app, and commit/push/open a PR — without a desktop.
+Connect a repository, ask the coding agent for a change, review proposed edits as a diff, preview the project, and continue with the Git workflow—all from a phone-sized interface. Chrono is built to make focused development tasks possible without relying on a desktop-sized workspace.
 
 **Status: Phase 8 (production — deployment guide, env validation, structured logging & crash reports, shared rate limits, end-to-end tests on mobile browsers, CI) complete.** See [docs/PHASES.md](docs/PHASES.md) for what works today and what's next.
 
