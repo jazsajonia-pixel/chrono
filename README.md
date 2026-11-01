@@ -10,7 +10,8 @@ Connect a repository, ask the coding agent for a change, review proposed edits a
 
 - React 18 + TypeScript + Vite 6, Tailwind CSS 3 (shadcn-style primitives), `wouter` hash routing
 - CodeMirror 6 editor, `diff` for change review; workspaces persisted per repo + branch in `localStorage`
-- Netlify hosting + Netlify Functions (TypeScript) for everything that touches secrets
+- Netlify or Vercel hosting; serverless functions (TypeScript) handle everything that touches secrets
+- Native-app sign-in is supported by the backend through a PKCE handoff and bearer sessions (native client maintained separately)
 - Vitest + Testing Library
 
 ## Getting started
@@ -47,9 +48,8 @@ npm run dev:api & npm run dev
 
 ## Deploying to Netlify
 
-Full guide: **[docs/DEPLOY.md](docs/DEPLOY.md)** (OAuth App, environment variables, database,
-verification, monitoring, rollback). In short:
-
+The full **[deployment guide](docs/DEPLOY.md)** covers both Netlify and Vercel (OAuth App, environment variables, database,
+verification, monitoring, rollback). The quick steps below show Netlify; use the guide for Vercel-specific setup.
 1. Import the repository in Netlify — build settings come from `netlify.toml`.
 2. Create a GitHub OAuth App with callback `https://<your-site>/api/auth/github/callback`.
 3. Set `APP_URL`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SESSION_SECRET`, and ideally
