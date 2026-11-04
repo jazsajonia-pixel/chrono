@@ -79,7 +79,14 @@ async function findSandbox(name: string) {
 
 async function authorizeRepository(req: Request, owner: string, repo: string) {
   const { gh, session } = await githubForRequest(req);
-  await gh.get("/repos/" + owner + "/" + repo);
+  try {
+    await gh.get("/repos/" + owner + "/" + repo);
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 404) {
+      throw new HttpError(404, "NOT_FOUND", "Chrono couldn't confirm access to " + owner + "/" + repo + " on GitHub. If it's private, sign in again with private repository access.");
+    }
+    throw error;
+  }
   return session;
 }
 
