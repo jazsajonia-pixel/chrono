@@ -7,6 +7,24 @@ export const MAX_PREVIEW_FILES = 350;
 export const MAX_PREVIEW_FILE_BYTES = 500_000;
 export const MAX_PREVIEW_TOTAL_BYTES = 1_800_000;
 
+/**
+ * Private, loopback, link-local, multicast and reserved IPv4 ranges the sandbox may not reach.
+ * The Vercel Sandbox API accepts IPv4 CIDRs only; IPv6 entries are rejected with 400 "Invalid CIDR".
+ */
+export const PREVIEW_DENY_SUBNETS: readonly string[] = [
+  "0.0.0.0/8", "10.0.0.0/8", "127.0.0.0/8", "169.254.0.0/16",
+  "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/4", "240.0.0.0/4",
+];
+
+/**
+ * Vercel Functions receive the OIDC token per request (x-vercel-oidc-token header), which the
+ * SDK reads from the request context, so running on Vercel (`VERCEL=1`) counts as configured.
+ */
+export function sandboxConfigured(env: Record<string, string | undefined> = process.env): boolean {
+  return !!env.VERCEL_OIDC_TOKEN || env.VERCEL === "1" ||
+    (!!env.VERCEL_TOKEN && !!env.VERCEL_PROJECT_ID && !!env.VERCEL_TEAM_ID);
+}
+
 export interface PreviewFile {
   path: string;
   content: string;

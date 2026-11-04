@@ -12,6 +12,8 @@ import {
   previewRunner,
   previewSandboxName,
   previewStartScript,
+  PREVIEW_DENY_SUBNETS,
+  sandboxConfigured,
   type PreviewFile,
 } from "../lib/sandbox-preview.js";
 
@@ -35,13 +37,21 @@ const stopSchema = z.object({
 const bodySchema = z.discriminatedUnion("action", [startSchema, stopSchema]);
 type PreviewBody = z.infer<typeof bodySchema>;
 
+// Always use absolute paths: the default working directory of a named sandbox is
+// `/vercel`, so relative paths and `.` would point outside the project folder.
 const ROOT = "/vercel/sandbox";
+const META = ROOT + "/.chrono-preview";
 const PORT_TIMEOUT = 10 * 60 * 1000;
 const SNAPSHOT_TTL = 24 * 60 * 60 * 1000;
 
-function sandboxConfigured(): boolean {
-  return !!process.env.VERCEL_OIDC_TOKEN ||
-    (!!process.env.VERCEL_TOKEN && !!process.env.VERCEL_PROJECT_ID && !!process.env.VERCEL_TEAM_ID);
+type SandboxCredentials = { token: string; teamId: string; projectId: string };
+
+/** Explicit access-token credentials, when all three values are configured. */
+function sandboxTokenCredentials(): SandboxCredentials | undefined {
+  const token = process.env.VERCEL_TOKEN;
+  const projectId = process.env.VERCEL_PROJECT_ID;
+  const teamId = process.env.VERCEL_TEAM_ID;
+  return token && projectId && teamId ? { token, teamId, projectId } : undefined;
 }
 
 async function getSandboxSdk() {
@@ -60,7 +70,7 @@ function isMissingSandbox(error: unknown): boolean {
 async function findSandbox(name: string) {
   const { Sandbox } = await getSandboxSdk();
   try {
-    return await Sandbox.get({ name });
+    return await Sandbox.get({ name, ...sandboxTokenCredentials() });
   } catch (error) {
     if (isMissingSandbox(error)) return null;
     throw error;
@@ -89,6 +99,7 @@ async function startPreview(req: Request, body: Extract<PreviewBody, { action: "
     }
 
     const sandbox = await Sandbox.getOrCreate({
+      ...sandboxTokenCredentials(),
       name,
       resume: true,
       image: "vercel/sandbox/node:24",
@@ -100,44 +111,45 @@ async function startPreview(req: Request, body: Extract<PreviewBody, { action: "
       keepLastSnapshots: { count: 1, expiration: SNAPSHOT_TTL, deleteEvicted: true },
       networkPolicy: {
         allow: ["*"],
-        subnets: {
-          deny: [
-            "0.0.0.0/8", "10.0.0.0/8", "127.0.0.0/8", "169.254.0.0/16",
-            "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/4", "240.0.0.0/4",
-            "::/128", "::1/128", "::ffff:0:0/96", "fc00::/7", "fe80::/10", "ff00::/8",
-          ],
-        },
+        subnets: { deny: [...PREVIEW_DENY_SUBNETS] },
       },
       tags: { "managed-by": "chrono" },
     });
 
     const reset = await sandbox.runCommand("bash", [
       "-lc",
-      "find . -mindepth 1 -maxdepth 1 ! -name .chrono-preview -exec rm -rf -- {} +; mkdir -p .chrono-preview; rm -f .chrono-preview/*",
+      "mkdir -p " + ROOT + " && cd " + ROOT + " && find . -mindepth 1 -maxdepth 1 ! -name .chrono-preview -exec rm -rf -- {} + && mkdir -p .chrono-preview && rm -f .chrono-preview/*",
     ], { timeoutMs: 15_000 });
     if (reset.exitCode !== 0) {
       throw new Error("Could not prepare the sandbox workspace.");
     }
 
     await sandbox.writeFiles([
-      ...files.map((file) => ({ path: file.path, content: file.content })),
-      { path: ".chrono-preview/start.sh", content: previewStartScript(runner), mode: 0o755 },
-      { path: ".chrono-preview/ref", content: body.ref },
-      { path: ".chrono-preview/state", content: "queued" },
+      ...files.map((file) => ({ path: ROOT + "/" + file.path, content: file.content })),
+      { path: META + "/start.sh", content: previewStartScript(runner), mode: 0o755 },
+      { path: META + "/ref", content: body.ref },
+      { path: META + "/state", content: "queued" },
     ]);
 
+    const url = sandbox.domain(PREVIEW_PORT);
     await sandbox.runCommand({
       cmd: "bash",
-      args: [".chrono-preview/start.sh"],
+      args: [META + "/start.sh"],
       cwd: ROOT,
-      env: { HOST: "0.0.0.0", PORT: String(PREVIEW_PORT), CI: "1" },
+      env: {
+        HOST: "0.0.0.0",
+        PORT: String(PREVIEW_PORT),
+        CI: "1",
+        // Vite (5.4.12+) blocks unknown Host headers; allow only this sandbox's public hostname.
+        __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: new URL(url).hostname,
+      },
       detached: true,
       timeoutMs: PORT_TIMEOUT - 10_000,
     });
 
     return json({
       status: "starting",
-      url: sandbox.domain(PREVIEW_PORT),
+      url,
       files: files.length,
       bytes: files.reduce((n, file) => n + Buffer.byteLength(file.content, "utf8"), 0),
     }, { status: 202 });
@@ -179,9 +191,9 @@ async function getPreview(req: Request) {
   }
 
   const previewUrl = sandbox.domain(PREVIEW_PORT);
-  const state = await sandbox.fs.readFile(".chrono-preview/state", "utf8").catch(() => "starting");
+  const state = await sandbox.fs.readFile(META + "/state", "utf8").catch(() => "starting");
   if (state.trim() === "failed") {
-    const logs = await sandbox.fs.readFile(".chrono-preview/error.log", "utf8").catch(() => "");
+    const logs = await sandbox.fs.readFile(META + "/error.log", "utf8").catch(() => "");
     return json({
       status: "failed",
       message: "The project server stopped during startup.",
@@ -194,12 +206,22 @@ async function getPreview(req: Request) {
       signal: AbortSignal.timeout(2500),
       redirect: "manual",
     });
+    if (response.status === 403) {
+      const text = await response.text().catch(() => "");
+      if (/Blocked request\. This host/i.test(text)) {
+        return json({
+          status: "failed",
+          message: "The dev server rejected the preview hostname. Allow it in the dev server's allowed hosts (for Vite: server.allowedHosts).",
+          logs: text.slice(0, 2000),
+        });
+      }
+    }
     if (response.status < 500) return json({ status: "running", url: previewUrl });
   } catch {
     // The VM may be running while dependencies install or the framework compiles.
   }
 
-  const logs = await sandbox.fs.readFile(".chrono-preview/server.log", "utf8").catch(() => "");
+  const logs = await sandbox.fs.readFile(META + "/server.log", "utf8").catch(() => "");
   return json({
     status: "starting",
     url: previewUrl,

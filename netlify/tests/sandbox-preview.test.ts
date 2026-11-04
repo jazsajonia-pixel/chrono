@@ -5,6 +5,8 @@ import {
   preparePreviewFiles,
   previewRunner,
   previewSandboxName,
+  PREVIEW_DENY_SUBNETS,
+  sandboxConfigured,
 } from "../lib/sandbox-preview.js";
 
 describe("Vercel live preview validation", () => {
@@ -56,5 +58,18 @@ describe("Vercel live preview validation", () => {
   it("rejects malformed manifests and unsupported projects", () => {
     expect(() => previewRunner([{ path: "package.json", content: "{" }])).toThrow(HttpError);
     expect(() => previewRunner([{ path: "README.md", content: "# no app" }])).toThrow(HttpError);
+  });
+
+  it("only sends IPv4 CIDRs in the network policy (the Sandbox API rejects IPv6)", () => {
+    expect(PREVIEW_DENY_SUBNETS.length).toBeGreaterThan(0);
+    for (const cidr of PREVIEW_DENY_SUBNETS) expect(cidr).toMatch(/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/);
+  });
+
+  it("detects sandbox credentials from OIDC, the Vercel runtime or a full token set", () => {
+    expect(sandboxConfigured({})).toBe(false);
+    expect(sandboxConfigured({ VERCEL: "1" })).toBe(true);
+    expect(sandboxConfigured({ VERCEL_OIDC_TOKEN: "t" })).toBe(true);
+    expect(sandboxConfigured({ VERCEL_TOKEN: "t", VERCEL_PROJECT_ID: "p" })).toBe(false);
+    expect(sandboxConfigured({ VERCEL_TOKEN: "t", VERCEL_PROJECT_ID: "p", VERCEL_TEAM_ID: "team" })).toBe(true);
   });
 });
