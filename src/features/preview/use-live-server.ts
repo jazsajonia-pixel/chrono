@@ -13,6 +13,9 @@ interface LiveServerResponse {
   logs?: string;
   files?: number;
   bytes?: number;
+  assets?: number;
+  assetBytes?: number;
+  skippedAssets?: string[];
 }
 
 interface LiveServerState extends LiveServerResponse {
@@ -33,7 +36,8 @@ const OMIT_SECRET_EXTENSIONS = new Set(["pem", "key", "p12", "pfx", "jks", "keys
 const OMIT_EXTENSIONS = new Set([
   "png", "jpg", "jpeg", "gif", "webp", "ico", "pdf", "zip", "gz", "mp4",
   "mov", "webm", "woff", "woff2", "ttf", "otf", "eot", "wasm", "psd",
-  "sketch", "sqlite", "db",
+  "sketch", "sqlite", "db", "avif", "bmp", "tif", "tiff", "heic", "jfif",
+  "mp3", "wav", "ogg", "m4a", "flac", "glb", "bin",
 ]);
 
 const SKIPPABLE_FILE_ERRORS = new Set<string>(["NOT_FOUND", "BINARY_FILE", "FILE_TOO_LARGE"]);
@@ -41,6 +45,15 @@ const SKIPPABLE_FILE_ERRORS = new Set<string>(["NOT_FOUND", "BINARY_FILE", "FILE
 function describeFailure(error: unknown, fallback: string): string {
   const message = error instanceof Error && error.message ? error.message : fallback;
   return error instanceof AppError && error.requestId ? message + " (request " + error.requestId + ")" : message;
+}
+
+/** Binary assets are fetched server-side from GitHub; secrets and generated folders never are. */
+function isBinaryAsset(path: string): boolean {
+  const parts = path.split("/");
+  if (parts.some((part) => OMIT_SEGMENTS.has(part.toLowerCase()) || OMIT_FILES.has(part.toLowerCase()) || /^\.env(?:$|\.)/i.test(part))) return false;
+  const filename = parts[parts.length - 1] ?? "";
+  const extension = filename.includes(".") ? filename.split(".").pop()?.toLowerCase() ?? "" : "";
+  return OMIT_EXTENSIONS.has(extension) && !OMIT_SECRET_EXTENSIONS.has(extension);
 }
 
 function includeInPreview(path: string): boolean {
@@ -85,9 +98,15 @@ export function useLiveServer(owner: string, repo: string) {
     try {
       const files: { path: string; content: string }[] = [];
       const skipped: string[] = [];
+      // Binary or oversized files: the server copies them from GitHub at this commit.
+      const assets: string[] = [];
       let bytes = 0;
 
       for (const path of workspace.paths) {
+        if (isBinaryAsset(path)) {
+          assets.push(path);
+          continue;
+        }
         if (!includeInPreview(path)) continue;
         if (files.length >= MAX_FILES) {
           throw new Error("Live preview supports up to " + MAX_FILES + " text files. Exclude generated or unused files and retry.");
@@ -98,6 +117,10 @@ export function useLiveServer(owner: string, repo: string) {
         } catch (error) {
           // Files GitHub can't serve as text (missing at this commit, binary, over 1 MB) are left out
           // instead of aborting the whole preview; anything else names the file that failed.
+          if (error instanceof AppError && (error.code === "BINARY_FILE" || error.code === "FILE_TOO_LARGE")) {
+            assets.push(path);
+            continue;
+          }
           if (error instanceof AppError && SKIPPABLE_FILE_ERRORS.has(error.code)) {
             skipped.push(path);
             continue;
@@ -122,7 +145,7 @@ export function useLiveServer(owner: string, repo: string) {
 
       const result = await api<LiveServerResponse>("/preview-server", {
         method: "POST",
-        body: { action: "start", ...identity, files },
+        body: { action: "start", ...identity, files, assets },
         timeoutMs: 90_000,
       });
       setState((current) => ({ ...current, ...result, mode: "server", error: undefined }));

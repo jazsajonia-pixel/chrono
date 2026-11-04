@@ -2,6 +2,7 @@ import type { Config } from "@netlify/functions";
 import { z } from "zod";
 import { handle, HttpError, json } from "../lib/http.js";
 import { githubForRequest } from "../lib/gh-request.js";
+import type { GitHubClient } from "../lib/github.js";
 import { requireSession } from "../lib/session.js";
 import { rateLimit } from "../lib/security.js";
 import { ownerSchema, parse, readJson, refSchema, repoSchema } from "../lib/validate.js";
@@ -12,6 +13,9 @@ import {
   previewRunner,
   previewSandboxName,
   previewStartScript,
+  prepareAssetPaths,
+  MAX_PREVIEW_ASSET_BYTES,
+  MAX_PREVIEW_ASSET_TOTAL_BYTES,
   PREVIEW_DENY_SUBNETS,
   sandboxConfigured,
   type PreviewFile,
@@ -27,6 +31,8 @@ const startSchema = z.object({
   repo: repoSchema,
   ref: refSchema,
   files: z.array(fileSchema).min(1).max(350),
+  // Binary/oversized files the client skipped; copied from GitHub at `ref`.
+  assets: z.array(z.string()).max(2000).optional(),
 });
 const stopSchema = z.object({
   action: z.literal("stop"),
@@ -77,6 +83,53 @@ async function findSandbox(name: string) {
   }
 }
 
+interface LoadedAssets {
+  files: { path: string; content: Uint8Array }[];
+  bytes: number;
+  skipped: string[];
+}
+
+/** Fetch binary assets from GitHub at the previewed commit, within size limits. */
+async function loadAssets(gh: GitHubClient, owner: string, repo: string, ref: string, paths: string[]): Promise<LoadedAssets> {
+  const result: LoadedAssets = { files: [], bytes: 0, skipped: [] };
+  if (paths.length === 0) return result;
+  const { data: tree } = await gh.get<{ tree: { path: string; type: string; sha: string; size?: number }[] }>(
+    "/repos/" + owner + "/" + repo + "/git/trees/" + encodeURIComponent(ref),
+    { recursive: 1 },
+  );
+  const blobs = new Map(tree.tree.filter((e) => e.type === "blob").map((e) => [e.path, e]));
+  const wanted: { path: string; sha: string; size: number }[] = [];
+  let planned = 0;
+  for (const path of paths) {
+    const entry = blobs.get(path);
+    const size = entry?.size ?? 0;
+    if (!entry || size > MAX_PREVIEW_ASSET_BYTES || planned + size > MAX_PREVIEW_ASSET_TOTAL_BYTES) {
+      result.skipped.push(path);
+      continue;
+    }
+    planned += size;
+    wanted.push({ path, sha: entry.sha, size });
+  }
+  let next = 0;
+  const worker = async () => {
+    while (next < wanted.length) {
+      const item = wanted[next++]!;
+      try {
+        const { data } = await gh.get<{ content: string; encoding: string }>(
+          "/repos/" + owner + "/" + repo + "/git/blobs/" + item.sha,
+        );
+        const content = new Uint8Array(Buffer.from(data.content, data.encoding === "base64" ? "base64" : "utf8"));
+        result.files.push({ path: item.path, content });
+        result.bytes += content.byteLength;
+      } catch {
+        result.skipped.push(item.path);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(6, wanted.length) }, worker));
+  return result;
+}
+
 async function authorizeRepository(req: Request, owner: string, repo: string) {
   const { gh, session } = await githubForRequest(req);
   try {
@@ -87,15 +140,17 @@ async function authorizeRepository(req: Request, owner: string, repo: string) {
     }
     throw error;
   }
-  return session;
+  return { session, gh };
 }
 
 async function startPreview(req: Request, body: Extract<PreviewBody, { action: "start" }>) {
-  const session = await authorizeRepository(req, body.owner, body.repo);
+  const { session, gh } = await authorizeRepository(req, body.owner, body.repo);
   await rateLimit("preview-start:" + session.user.id, 4, 60_000);
 
   const files = preparePreviewFiles(body.files as PreviewFile[]);
   const runner = previewRunner(files);
+  const assetPaths = prepareAssetPaths(body.assets, new Set(files.map((file) => file.path)));
+  const assets = await loadAssets(gh, body.owner, body.repo, body.ref, assetPaths);
   const name = previewSandboxName(session.user.id, body.owner, body.repo, body.ref);
   const { Sandbox } = await getSandboxSdk();
 
@@ -137,6 +192,19 @@ async function startPreview(req: Request, body: Extract<PreviewBody, { action: "
       { path: META + "/ref", content: body.ref },
       { path: META + "/state", content: "queued" },
     ]);
+    // Write assets in ~8 MB batches to keep each upload request small.
+    for (let i = 0, batch: typeof assets.files = [], size = 0; i <= assets.files.length; i++) {
+      const asset = assets.files[i];
+      if (!asset || size + asset.content.byteLength > 8_000_000) {
+        if (batch.length) await sandbox.writeFiles(batch.map((a) => ({ path: ROOT + "/" + a.path, content: a.content })));
+        batch = [];
+        size = 0;
+      }
+      if (asset) {
+        batch.push(asset);
+        size += asset.content.byteLength;
+      }
+    }
 
     const url = sandbox.domain(PREVIEW_PORT);
     await sandbox.runCommand({
@@ -159,6 +227,9 @@ async function startPreview(req: Request, body: Extract<PreviewBody, { action: "
       url,
       files: files.length,
       bytes: files.reduce((n, file) => n + Buffer.byteLength(file.content, "utf8"), 0),
+      assets: assets.files.length,
+      assetBytes: assets.bytes,
+      ...(assets.skipped.length ? { skippedAssets: assets.skipped.slice(0, 50) } : {}),
     }, { status: 202 });
   } catch (error) {
     if (error instanceof HttpError) throw error;
@@ -235,7 +306,9 @@ async function getPreview(req: Request) {
         });
       }
     }
-    if (response.status < 500) return json({ status: "running", url: previewUrl });
+    // 502–504 come from the sandbox proxy while nothing listens yet. Any other status (including
+    // an app's own 500 error page, e.g. a Next.js compile error) means the server is up: show it.
+    if (response.status < 502 || response.status > 504) return json({ status: "running", url: previewUrl });
   } catch {
     // The VM may be running while dependencies install or the framework compiles.
   }

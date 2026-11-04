@@ -5,6 +5,7 @@ import {
   preparePreviewFiles,
   previewRunner,
   previewSandboxName,
+  prepareAssetPaths,
   PREVIEW_DENY_SUBNETS,
   sandboxConfigured,
 } from "../lib/sandbox-preview.js";
@@ -71,5 +72,16 @@ describe("Vercel live preview validation", () => {
     expect(sandboxConfigured({ VERCEL_OIDC_TOKEN: "t" })).toBe(true);
     expect(sandboxConfigured({ VERCEL_TOKEN: "t", VERCEL_PROJECT_ID: "p" })).toBe(false);
     expect(sandboxConfigured({ VERCEL_TOKEN: "t", VERCEL_PROJECT_ID: "p", VERCEL_TEAM_ID: "team" })).toBe(true);
+  });
+
+  it("keeps safe asset paths and drops secrets, generated output, duplicates and text overlaps", () => {
+    const text = new Set(["src/app/page.jsx"]);
+    expect(prepareAssetPaths(undefined, text)).toEqual([]);
+    expect(prepareAssetPaths([
+      "assets/profile.jpeg", "public/fonts/a.woff2", "assets/profile.jpeg",
+      "certs/server.key", ".env.png", "node_modules/x/logo.png", "dist/a.png", "src/app/page.jsx",
+    ], text)).toEqual(["assets/profile.jpeg", "public/fonts/a.woff2"]);
+    expect(() => prepareAssetPaths(["../etc/passwd"], text)).toThrow(HttpError);
+    expect(() => prepareAssetPaths("x", text)).toThrow(HttpError);
   });
 });

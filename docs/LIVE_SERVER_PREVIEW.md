@@ -32,3 +32,11 @@ Local development still supports Browser Preview.
 ## Verification (2026-11-04)
 
 The real `/api/preview-server` handler (session and GitHub checks stubbed) was run against Vercel Sandbox for the `chrono` project: a Vite 6 app and a Next.js 16 app both reached `running` and served their page (HTTP 200, no frame-blocking headers); a project whose dev script exits reported `failed` with its logs; stop returned `stopped`.
+
+## Binary assets
+
+Text files (including unsaved edits) are sent from the browser. Binary or oversized files (images, fonts, audio, files over 1 MB) are listed as `assets`, and the server copies them from GitHub at the previewed commit via the Git blobs API: up to 400 files, 8 MB each, 40 MB total. Secrets, `.env*`, VCS data and generated folders are never copied. Unsaved binary edits aren't possible in the editor, so the committed version is used.
+
+## Status
+
+The sandbox proxy answers 502–504 while nothing is listening. Any other response, including an app's own 500 error page (for example a Next.js compile error), counts as running, so the error shows in the preview.
