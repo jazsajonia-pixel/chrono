@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MouseEvent, type MutableRefObject } from "react";
 import { Link } from "wouter";
-import { ArrowRight, ArrowUpRight, GitBranch, GitPullRequestArrow, KeyRound, ShieldCheck } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, GitBranch, GitPullRequestArrow, KeyRound, ScanSearch, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GitHubIcon, Wordmark } from "@/components/brand";
 import { useSession } from "@/stores/session";
@@ -17,7 +17,7 @@ const FEATURES = [
   { title: "The repo you already trust", body: "Branches, files and commit history load straight from GitHub, at the branch you pick." },
   { title: "An agent that shows its work", body: "Requests become a visible plan, then reviewable diffs. Nothing is written until you accept it." },
   { title: "A preview of the real app", body: "Static sites and Vite apps run in the browser; Node projects such as Next.js run on a temporary live server." },
-  { title: "Made for one hand", body: "Bottom sheets, 44 px touch targets and a keyboard-aware editor, tested on phone-sized screens." },
+  { title: "At home on any screen", body: "A sidebar workspace with keyboard shortcuts on desktop; bottom sheets and a keyboard-aware editor on phones." },
   { title: "Your choice of model", body: "OpenAI, Anthropic, Gemini, OpenRouter or any OpenAI-compatible endpoint, with keys kept on the server." },
   { title: "Branch first, always", body: "Changes go to an ai/ branch so main stays untouched until you merge the pull request." },
 ] as const;
@@ -44,45 +44,108 @@ function useReveal() {
   return ref;
 }
 
-/** A static picture of the workspace: a file, a proposed change and the branch it lands on. */
-function WorkspacePicture() {
+const reducedMotion = () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+/** Drives the hero's parallax layers from scroll position (one rAF per frame, off with reduced motion). */
+function useDepthMotion() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = ref.current;
+    if (!root || reducedMotion()) return;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const y = Math.min(window.scrollY, 1600);
+      root.style.setProperty("--scroll-depth", `${y}px`);
+      root.style.setProperty("--hero-tilt", `${Math.min(y * 0.006, 7)}deg`);
+      root.style.setProperty("--hero-scale", `${1 - Math.min(y * 0.000025, 0.035)}`);
+    };
+    const onScroll = () => {
+      if (!frame) frame = window.requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, []);
+  return ref;
+}
+
+/**
+ * The app uses hash routing (#/signin), so plain #section links would change the route.
+ * Scroll to the section instead and move focus there for keyboard and screen-reader users.
+ */
+function scrollToSection(e: MouseEvent, id: string) {
+  e.preventDefault();
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
+  el.focus({ preventScroll: true });
+}
+
+/** The floating workspace card: a file, the agent's proposed line, and the branch it lands on. */
+function WorkspacePreview() {
   return (
-    <figure className="ws-frame" aria-label="Chrono workspace: the agent proposes a one-line change to App.jsx on the ai/task-count branch">
-      <div className="ws-bar">
-        <span className="ws-repo"><span>octo/</span>pocket-tasks</span>
-        <span className="ws-branch"><GitBranch aria-hidden /> ai/task-count</span>
+    <div className="workspace-stage" aria-hidden="true">
+      <div className="workspace-orbit workspace-orbit-one" />
+      <div className="workspace-orbit workspace-orbit-two" />
+      <div className="workspace-card workspace-card-main">
+        <div className="workspace-topbar">
+          <div className="workspace-dots"><i /><i /><i /></div>
+          <span className="workspace-pill">AI WORKSPACE</span>
+          <span className="workspace-status"><span /> Ready</span>
+        </div>
+        <div className="workspace-body">
+          <aside className="workspace-sidebar">
+            <span className="workspace-side-title">PROJECT</span>
+            <strong><span className="folder-glyph">⌁</span> pocket-tasks</strong>
+            <div className="workspace-tree"><span>src</span><span className="active-file">App.jsx</span><span>TaskList.jsx</span><span>package.json</span></div>
+            <div className="workspace-sidebar-foot"><span /> ai/task-count</div>
+          </aside>
+          <div className="workspace-editor">
+            <div className="editor-tabs"><span className="tab-active">App.jsx</span><span>TaskList.jsx</span><span className="editor-actions">•••</span></div>
+            <div className="code-lines">
+              <span><b>01</b> <em>import</em> <strong>TaskList</strong> <em>from</em> <u>"./TaskList"</u></span>
+              <span><b>02</b> </span>
+              <span><b>03</b> <em>export default function</em> <strong>App</strong>({"{ tasks }"}) {"{"}</span>
+              <span className="code-add"><b>04</b> + <em>const</em> remaining = tasks.filter((t) =&gt; !t.done)</span>
+              <span><b>05</b> &nbsp; <em>return</em> <u>&lt;TaskList tasks={"{remaining}"} /&gt;</u></span>
+              <span><b>06</b> {"}"}</span>
+            </div>
+            <div className="editor-footer"><span><GitBranch /> ai/task-count</span><span><ScanSearch /> 1 change</span></div>
+          </div>
+        </div>
+        <div className="workspace-bottom"><span>Files</span><span className="bottom-active"><Sparkles /> AI</span><span>Preview</span><span>Git</span></div>
       </div>
-      <div className="ws-tabs"><span className="is-active">App.jsx</span><span>TaskList.jsx</span></div>
-      <pre className="ws-code" aria-hidden="true">
-        <span><b>1</b><em>import</em> TaskList <em>from</em> <u>"./TaskList"</u></span>
-        <span><b>2</b></span>
-        <span><b>3</b><em>export default function</em> <strong>App</strong>({"{ tasks }"}) {"{"}</span>
-        <span className="ws-add"><b>4</b>+ <em>const</em> remaining = tasks.filter((t) =&gt; !t.done)</span>
-        <span><b>5</b>  <em>return</em> &lt;TaskList tasks={"{remaining}"} /&gt;</span>
-        <span><b>6</b>{"}"}</span>
-      </pre>
-      <figcaption className="ws-plan">
-        <span className="ws-plan-title">Show only open tasks</span>
-        <span className="ws-plan-meta">1 file · 1 line added · waiting for your review</span>
-        <span className="ws-plan-actions"><span className="ws-btn">Reject</span><span className="ws-btn is-primary">Accept</span></span>
-      </figcaption>
-      <div className="ws-tabbar" aria-hidden="true"><span>Files</span><span className="is-active">AI</span><span>Preview</span><span>Git</span></div>
-    </figure>
+      <div className="workspace-float workspace-float-plan">
+        <span className="float-icon"><Sparkles /></span>
+        <div><small>AGENT PLAN</small><strong>Show only open tasks</strong><span>1 file · ready to review</span></div>
+        <Check />
+      </div>
+      <div className="workspace-float workspace-float-branch"><GitBranch /><span>ai/task-count</span><i>●</i></div>
+    </div>
   );
 }
 
 export default function LandingPage() {
   const { isAuthed } = useSession();
   const revealRef = useReveal();
+  const depthRef = useDepthMotion();
+  const setRoot = (node: HTMLDivElement | null) => {
+    (revealRef as MutableRefObject<HTMLDivElement | null>).current = node;
+    (depthRef as MutableRefObject<HTMLDivElement | null>).current = node;
+  };
   const appHref = isAuthed ? "/app" : "/signin";
   return (
-    <div ref={revealRef} className="landing-page min-h-dvh overflow-x-hidden">
+    <div ref={setRoot} className="landing-page min-h-dvh overflow-x-hidden">
       <header className="landing-nav mx-auto flex h-16 max-w-6xl items-center justify-between px-5 pt-safe lg:h-20 lg:px-8">
         <Link href="/" className="rounded-md" aria-label="Chrono home"><Wordmark appearance="dark" /></Link>
         <nav className="hidden items-center gap-7 text-sm md:flex" aria-label="Landing navigation">
-          <a href="#workflow">How it works</a>
-          <a href="#features">Features</a>
-          <a href="#security">Security</a>
+          <a href="#workflow" onClick={(e) => scrollToSection(e, "workflow")}>How it works</a>
+          <a href="#features" onClick={(e) => scrollToSection(e, "features")}>Features</a>
+          <a href="#security" onClick={(e) => scrollToSection(e, "security")}>Security</a>
         </nav>
         <Button asChild variant="ghost" size="sm" className="landing-signin">
           <Link href={appHref} data-testid="link-signin">{isAuthed ? "Open app" : "Sign in"}<ArrowUpRight className="ml-1 size-3.5" /></Link>
@@ -91,24 +154,31 @@ export default function LandingPage() {
 
       <main id="main">
         <section className="hero-section">
-          <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-16 pt-8 lg:grid-cols-[1fr_1fr] lg:gap-16 lg:px-8 lg:pb-24 lg:pt-14">
+          <div className="hero-grid" aria-hidden="true" />
+          <div className="hero-glow hero-glow-a" aria-hidden="true" />
+          <div className="hero-glow hero-glow-b" aria-hidden="true" />
+          <div className="hero-depth-back" aria-hidden="true">
+            <span className="depth-orb depth-orb-a" /><span className="depth-orb depth-orb-b" />
+            <span className="depth-line depth-line-a" /><span className="depth-line depth-line-b" />
+          </div>
+          <div className="hero-inner mx-auto grid max-w-6xl items-center gap-12 px-5 pb-16 pt-8 lg:grid-cols-[.92fr_1.08fr] lg:gap-12 lg:px-8 lg:pb-24 lg:pt-14">
             <div className="hero-copy">
-              <h1>Edit, preview and ship your GitHub repos from your phone.</h1>
+              <h1>Build, preview and ship your GitHub projects <span className="hero-highlight">from anywhere.</span></h1>
               <p className="hero-lede">
-                Open a repository, ask the AI agent for a change, review the diff, run the app, and commit to a branch — without a laptop.
+                Open a repository, ask the AI agent for a change, review the diff, run the app and open a pull request — in one workspace that works the same on your desktop, tablet or phone.
               </p>
               <div className="hero-actions">
                 <Button asChild size="lg" className="hero-cta" data-testid="button-start-building">
                   <Link href={appHref}>{isAuthed ? "Open your projects" : <><GitHubIcon /> Continue with GitHub</>}</Link>
                 </Button>
-                <a href="#workflow" className="hero-secondary">How it works <ArrowRight aria-hidden /></a>
+                <a href="#workflow" className="hero-secondary" onClick={(e) => scrollToSection(e, "workflow")} data-testid="link-how-it-works">How it works <ArrowRight aria-hidden /></a>
               </div>
             </div>
-            <div className="hero-visual"><WorkspacePicture /></div>
+            <div className="hero-visual"><WorkspacePreview /></div>
           </div>
         </section>
 
-        <section id="workflow" aria-labelledby="workflow-heading" className="reveal section-shell mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-28">
+        <section id="workflow" tabIndex={-1} aria-labelledby="workflow-heading" className="reveal section-shell mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-28">
           <h2 id="workflow-heading">From request to pull request</h2>
           <ol className="steps">
             {STEPS.map((s) => (
@@ -120,7 +190,7 @@ export default function LandingPage() {
           </ol>
         </section>
 
-        <section id="features" aria-labelledby="features-heading" className="reveal section-shell mx-auto max-w-6xl px-5 pb-20 lg:px-8 lg:pb-28">
+        <section id="features" tabIndex={-1} aria-labelledby="features-heading" className="reveal section-shell mx-auto max-w-6xl px-5 pb-20 lg:px-8 lg:pb-28">
           <h2 id="features-heading">Everything between a repo and a merge</h2>
           <dl className="feature-list">
             {FEATURES.map((f) => (
@@ -132,7 +202,7 @@ export default function LandingPage() {
           </dl>
         </section>
 
-        <section id="security" aria-labelledby="security-heading" className="reveal section-shell mx-auto max-w-6xl px-5 pb-20 lg:px-8 lg:pb-28">
+        <section id="security" tabIndex={-1} aria-labelledby="security-heading" className="reveal section-shell mx-auto max-w-6xl px-5 pb-20 lg:px-8 lg:pb-28">
           <div className="security-panel">
             <div>
               <h2 id="security-heading">Your code and keys stay where they belong</h2>
@@ -161,7 +231,7 @@ export default function LandingPage() {
       <footer className="landing-footer">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-5 py-7 text-xs sm:flex-row sm:items-center sm:justify-between lg:px-8">
           <Wordmark appearance="dark" className="opacity-80" />
-          <span>Built for developers who code from their phone.</span>
+          <span>Chrono · Early access</span>
         </div>
       </footer>
     </div>
