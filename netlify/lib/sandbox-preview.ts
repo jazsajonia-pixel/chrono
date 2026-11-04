@@ -6,6 +6,10 @@ export const PREVIEW_PORT = 3000;
 export const MAX_PREVIEW_FILES = 350;
 export const MAX_PREVIEW_FILE_BYTES = 500_000;
 export const MAX_PREVIEW_TOTAL_BYTES = 1_800_000;
+/** Binary assets (images, fonts, …) are copied from GitHub at the previewed commit. */
+export const MAX_PREVIEW_ASSETS = 400;
+export const MAX_PREVIEW_ASSET_BYTES = 8_000_000;
+export const MAX_PREVIEW_ASSET_TOTAL_BYTES = 40_000_000;
 
 /**
  * Private, loopback, link-local, multicast and reserved IPv4 ranges the sandbox may not reach.
@@ -52,8 +56,39 @@ const SENSITIVE_EXTENSIONS = new Set(["pem", "key", "p12", "pfx", "jks", "keysto
 const BINARY_EXTENSIONS = new Set([
   "png", "jpg", "jpeg", "gif", "webp", "ico", "pdf", "zip", "gz", "mp4",
   "mov", "webm", "woff", "woff2", "ttf", "otf", "eot", "wasm", "psd",
-  "sketch", "sqlite", "db",
+  "sketch", "sqlite", "db", "avif", "bmp", "tif", "tiff", "heic", "jfif",
+  "mp3", "wav", "ogg", "m4a", "flac", "glb", "bin",
 ]);
+
+/** Shared rule for both text files and assets: never copy credentials, VCS data or generated output. */
+function isForbiddenPath(path: string): boolean {
+  const parts = path.split("/");
+  const filename = parts[parts.length - 1] ?? "";
+  const extension = filename.includes(".") ? filename.split(".").pop()?.toLowerCase() ?? "" : "";
+  return parts.some((part) => EXCLUDED_SEGMENTS.has(part.toLowerCase())) ||
+    parts.some((part) => /^\.env(?:$|\.)/i.test(part)) ||
+    parts.some((part) => SENSITIVE_FILES.has(part.toLowerCase())) ||
+    SENSITIVE_EXTENSIONS.has(extension);
+}
+
+/**
+ * Validate the asset paths the client could not send as text. Unsafe, duplicate or text-overlapping
+ * paths are dropped rather than failing the preview; the files themselves come from GitHub.
+ */
+export function prepareAssetPaths(paths: unknown, textPaths: ReadonlySet<string>): string[] {
+  if (paths === undefined) return [];
+  if (!Array.isArray(paths)) throw new HttpError(422, "VALIDATION_FAILED", "assets must be a list of paths.");
+  const accepted: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of paths) {
+    const path = parse(pathSchema, raw, "asset path");
+    if (isForbiddenPath(path) || textPaths.has(path) || seen.has(path)) continue;
+    seen.add(path);
+    accepted.push(path);
+    if (accepted.length >= MAX_PREVIEW_ASSETS) break;
+  }
+  return accepted;
+}
 
 /** Transfer text files only; never copy known local credentials, VCS data or generated files. */
 export function preparePreviewFiles(files: PreviewFile[]): PreviewFile[] {
