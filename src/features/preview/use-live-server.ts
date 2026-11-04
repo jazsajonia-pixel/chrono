@@ -113,6 +113,11 @@ export function useLiveServer(owner: string, repo: string) {
         files.push({ path, content });
       }
 
+      if (files.length === 0) {
+        throw new Error(skipped.length
+          ? "Chrono couldn't load any project files from GitHub (" + skipped.length + " skipped). Reload and try again."
+          : "This workspace has no text files to run.");
+      }
       if (skipped.length) console.warn("Live preview skipped files GitHub couldn't serve as text:", skipped);
 
       const result = await api<LiveServerResponse>("/preview-server", {
