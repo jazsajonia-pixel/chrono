@@ -85,6 +85,6 @@ docs/              architecture, phases, security
 - User AI keys are encrypted (AES-256-GCM) and never returned to the browser — only a masked hint. Custom base URLs are SSRF-checked.
 - `/api/health` reports configuration as booleans — never values. Tests assert secrets don't leak.
 - `.env*` files are git-ignored; only `.env.example` with placeholders is committed.
-- Repository content is untrusted data: never executed on the server, never treated as instructions for the AI.
+- Repository content is untrusted data: it is not executed by Chrono's application server. Opt-in Live Server Preview runs a workspace snapshot inside an isolated Vercel Sandbox. Chrono does not inject its own credentials, but project files can contain secrets and must be reviewed before previewing.
 
-More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/LIVE_SERVER_PREVIEW.md](docs/LIVE_SERVER_PREVIEW.md).
