@@ -4,6 +4,8 @@ import {
   MAX_PREVIEW_TOTAL_BYTES,
   preparePreviewFiles,
   previewRunner,
+  previewStartScript,
+  PREVIEW_PROXY_SOURCE,
   previewSandboxName,
   prepareAssetPaths,
   PREVIEW_DENY_SUBNETS,
@@ -54,6 +56,29 @@ describe("Vercel live preview validation", () => {
       path: "package.json",
       content: JSON.stringify({ scripts: { dev: "next dev" }, dependencies: { next: "^15" } }),
     }]).args).toContain("--hostname");
+  });
+
+  it("forwards the port instead of passing flags when the dev script wraps several processes", () => {
+    const runner = (dev: string, deps: Record<string, string> = { vite: "^6" }) =>
+      previewRunner([{ path: "package.json", content: JSON.stringify({ scripts: { dev }, devDependencies: deps }) }]);
+    expect(runner('concurrently "npm:dev:api" "npm:dev:web"')).toEqual({ script: "dev", args: [], proxy: true });
+    expect(runner("npm run build:css && vite").proxy).toBe(true);
+    expect(runner("turbo run dev", { next: "^15" }).proxy).toBe(true);
+    expect(runner("NODE_ENV=development vite").proxy).toBeUndefined();
+    expect(runner("npx vite --open").args).toContain("--strictPort");
+    expect(runner("next dev --turbo", { next: "^15" }).args).toContain("--hostname");
+
+    const script = previewStartScript(runner('concurrently "a" "b"'));
+    expect(script).toContain("node .chrono-preview/proxy.mjs");
+    expect(script).toContain("unset PORT");
+    expect(script.trim().endsWith("npm run dev")).toBe(true);
+    expect(previewStartScript(runner("vite"))).toContain("PORT=3000 npm run dev -- --host 0.0.0.0 --port 3000 --strictPort");
+  });
+
+  it("ships a forwarder that is valid JavaScript and listens on the preview port", () => {
+    expect(() => new Function(PREVIEW_PROXY_SOURCE.replace(/^import .*$/gm, ""))).not.toThrow();
+    expect(PREVIEW_PROXY_SOURCE).toContain("server.listen(LISTEN");
+    expect(PREVIEW_PROXY_SOURCE).toContain("const LISTEN = 3000");
   });
 
   it("rejects malformed manifests and unsupported projects", () => {

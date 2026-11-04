@@ -13,6 +13,7 @@ import {
   previewRunner,
   previewSandboxName,
   previewStartScript,
+  PREVIEW_PROXY_SOURCE,
   prepareAssetPaths,
   MAX_PREVIEW_ASSET_BYTES,
   MAX_PREVIEW_ASSET_TOTAL_BYTES,
@@ -189,6 +190,7 @@ async function startPreview(req: Request, body: Extract<PreviewBody, { action: "
     await sandbox.writeFiles([
       ...files.map((file) => ({ path: ROOT + "/" + file.path, content: file.content })),
       { path: META + "/start.sh", content: previewStartScript(runner), mode: 0o755 },
+      ...(runner.proxy ? [{ path: META + "/proxy.mjs", content: PREVIEW_PROXY_SOURCE }] : []),
       { path: META + "/ref", content: body.ref },
       { path: META + "/state", content: "queued" },
     ]);
