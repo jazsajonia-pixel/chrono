@@ -80,6 +80,7 @@
     "node": ">=20"
   },
   "overrides": {
-    "zod": "$zod"
+    "zod": "$zod",
+    "undici": "^7.30.1"
   }
 }
