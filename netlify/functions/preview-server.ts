@@ -193,8 +193,20 @@ async function getPreview(req: Request) {
   const sandbox = await findSandbox(previewSandboxName(session.user.id, owner, repo, ref));
 
   if (!sandbox) return json({ status: "idle" });
-  if (sandbox.status !== "running") {
-    return json({ status: sandbox.status === "stopping" ? "stopping" : "stopped" });
+  switch (sandbox.status) {
+    case "running":
+      break;
+    // Booting or restoring a snapshot: keep the client polling instead of reporting "stopped".
+    case "pending":
+    case "snapshotting":
+      return json({ status: "starting", message: "Starting the sandbox…" });
+    case "stopping":
+      return json({ status: "stopping" });
+    case "failed":
+    case "aborted":
+      return json({ status: "failed", message: "Vercel Sandbox stopped this preview (" + sandbox.status + "). Start it again." });
+    default:
+      return json({ status: "stopped", message: "The live server stopped. Servers expire after 10 minutes; start it again." });
   }
 
   const previewUrl = sandbox.domain(PREVIEW_PORT);

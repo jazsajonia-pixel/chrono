@@ -38,6 +38,11 @@ const OMIT_EXTENSIONS = new Set([
 
 const SKIPPABLE_FILE_ERRORS = new Set<string>(["NOT_FOUND", "BINARY_FILE", "FILE_TOO_LARGE"]);
 
+function describeFailure(error: unknown, fallback: string): string {
+  const message = error instanceof Error && error.message ? error.message : fallback;
+  return error instanceof AppError && error.requestId ? message + " (request " + error.requestId + ")" : message;
+}
+
 function includeInPreview(path: string): boolean {
   const parts = path.split("/");
   if (parts.some((part) =>
@@ -117,13 +122,11 @@ export function useLiveServer(owner: string, repo: string) {
       });
       setState((current) => ({ ...current, ...result, mode: "server", error: undefined }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not start the live preview.";
-      const requestId = error instanceof AppError && error.requestId ? " (request " + error.requestId + ")" : "";
       setState((current) => ({
         ...current,
         mode: "server",
         status: "failed",
-        error: message + requestId,
+        error: describeFailure(error, "Could not start the live preview."),
       }));
     } finally {
       busy.current = false;
@@ -154,7 +157,12 @@ export function useLiveServer(owner: string, repo: string) {
 
   const setMode = useCallback((mode: LiveServerMode) => {
     setState((current) => ({ ...current, mode }));
-    if (mode === "server") void refresh().catch(() => undefined);
+    if (mode === "server") {
+      void refresh().catch((error: unknown) => {
+        // Surface status-check failures instead of silently showing an idle server.
+        setState((current) => ({ ...current, error: describeFailure(error, "Couldn't check the live server.") }));
+      });
+    }
   }, [refresh]);
 
   const reload = useCallback(() => setFrameKey((key) => key + 1), []);
