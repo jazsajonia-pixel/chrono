@@ -126,6 +126,8 @@ function routeFor(pathname: string): Route | null {
   return null;
 }
 
+const INTERNAL_REWRITE_PARAMS = ["__chrono_path", "chronoRoute"];
+
 export async function handleVercelRequest(req: VercelRequest, res: VercelResponse): Promise<void> {
   const protocol = Array.isArray(req.headers["x-forwarded-proto"]) ? req.headers["x-forwarded-proto"][0] : req.headers["x-forwarded-proto"] ?? "https";
   const host = Array.isArray(req.headers.host) ? req.headers.host[0] : req.headers.host ?? "localhost";
@@ -135,6 +137,12 @@ export async function handleVercelRequest(req: VercelRequest, res: VercelRespons
   // parameter so the shared adapter still sees the public API URL.
   const rewrittenPath = url.pathname === "/api/index" ? url.searchParams.get("__chrono_path") : null;
   const routePath = rewrittenPath ? `/api/${rewrittenPath.replace(/^\/+/, "")}` : url.pathname;
+  if (rewrittenPath !== null) {
+    // Give handlers the public URL. The rewrite's route parameter must not share a name with any
+    // API query parameter: it used to be `:path*`, which overwrote `?path=` for the file endpoint.
+    url.pathname = routePath;
+    for (const key of INTERNAL_REWRITE_PARAMS) url.searchParams.delete(key);
+  }
   const route = routeFor(routePath);
   if (!route) {
     const missing = errorResponse(404, "VALIDATION_FAILED", "API route not found.");

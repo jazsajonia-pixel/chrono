@@ -6,14 +6,14 @@
     "api/index.ts": {
       "maxDuration": 120
     },
-    "api/[[...path]].ts": {
+    "api/[[...chronoRoute]].ts": {
       "maxDuration": 120
     }
   },
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "/api/index?__chrono_path=:path*"
+      "source": "/api/:chronoRoute*",
+      "destination": "/api/index?__chrono_path=:chronoRoute*"
     },
     {
       "source": "/((?!api(?:/|$)).*)",
