@@ -57,6 +57,14 @@ describe("mobile editor", () => {
     expect(await screen.findByText("Working tree clean")).toBeInTheDocument();
   });
 
+  it("keeps the preview mounted when switching to AI chat in the same project", async () => {
+    const loc = renderDemo(`${SAMPLE_PATH}/preview`);
+    const frame = await screen.findByTestId("preview-frame", {}, { timeout: 10000 });
+    fireEvent.click(await screen.findByTestId("tab-ai"));
+    await waitFor(() => expect(loc.history?.at(-1)).toBe(`${SAMPLE_PATH}/ai`));
+    expect(screen.getByTestId("preview-frame")).toBe(frame);
+    expect(screen.getByTestId("preview-panel").parentElement).toHaveClass("hidden");
+  });
   it("undo / redo through the action bar", async () => {
     renderDemo();
     fireEvent.click(await screen.findByText("README.md", {}, { timeout: 5000 }));

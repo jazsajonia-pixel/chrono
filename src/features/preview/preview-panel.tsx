@@ -99,6 +99,10 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
   const stageWidth = useWidth(stage);
 
   const state = p.state;
+  const usesLiveServer = state.status === "unsupported" && state.plan.liveServer;
+  useEffect(() => {
+    if (usesLiveServer && live.state.status === "idle") void live.start();
+  }, [usesLiveServer, live.state.status, live.start]);
   const result = state.status === "ready" ? state.result : state.status === "building" ? state.previous : null;
   const plan = state.status === "ready" || state.status === "building" ? state.plan : state.status === "error" ? state.plan : null;
   const errorCount = p.logs.filter((l) => l.level === "error").length;
@@ -123,7 +127,7 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
     navigate(projectPath(owner, repo, "ai"));
   };
 
-  if (state.status === "unsupported" && live.state.mode !== "server") {
+  if (state.status === "unsupported" && !usesLiveServer) {
     return (
       <div className="p-4" data-testid="preview-unsupported">
         <div className="rounded-lg border bg-surface p-5">
@@ -141,9 +145,6 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
             <Button variant="secondary" onClick={p.rebuild}>
               <RotateCw /> Check again
             </Button>
-            <Button variant="secondary" onClick={() => live.setMode("server")} data-testid="button-try-live-server">
-              <ServerOff /> Try Live Server Preview
-            </Button>
           </div>
         </div>
       </div>
@@ -157,7 +158,7 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
     <div className={cn("flex min-h-0 flex-1 flex-col bg-background", full && "fixed inset-0 z-50 pt-safe pb-safe")} data-testid="preview-panel">
       <div className="flex h-12 shrink-0 items-center gap-1 border-b px-2">
         <div className="flex min-w-0 flex-1 items-center gap-1.5 px-1" role="status" data-testid="preview-status">
-          {live.state.mode === "server" ? (
+          {usesLiveServer ? (
             live.state.status === "starting" || live.state.status === "stopping" ? (
               <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
             ) : live.state.status === "failed" ? (
@@ -173,7 +174,7 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
             <span className={cn("size-2 shrink-0 rounded-full", p.booted ? "bg-primary" : "bg-warning")} aria-hidden />
           )}
           <span className="truncate text-xs">
-            {live.state.mode === "server"
+            {usesLiveServer
               ? live.state.status === "running" ? "Live server ready"
                 : live.state.status === "starting" ? (live.state.message ?? "Starting live server…")
                 : live.state.status === "stopping" ? "Stopping live server…"
@@ -184,7 +185,7 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
                 : state.status === "error" ? "Build failed"
                 : runtimeError ? "Runtime error" : p.booted ? (plan?.label ?? "Ready") : "Starting…"}
           </span>
-          {live.state.mode === "browser" && plan && plan.pages.length > 1 ? (
+          {!usesLiveServer && plan && plan.pages.length > 1 ? (
             <select
               value={p.page ?? plan.html}
               onChange={(e) => p.goToPage(e.target.value)}
@@ -200,11 +201,7 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
             </select>
           ) : null}
         </div>
-        <div role="group" aria-label="Preview mode" className="inline-flex shrink-0 rounded-md border p-0.5">
-          <button type="button" aria-pressed={live.state.mode === "browser"} onClick={() => live.setMode("browser")} className={cn("rounded px-2 py-1 text-[11px]", live.state.mode === "browser" ? "bg-surface-2 text-foreground" : "text-muted-foreground")} data-testid="preview-mode-browser">Browser</button>
-          <button type="button" aria-pressed={live.state.mode === "server"} onClick={() => live.setMode("server")} className={cn("rounded px-2 py-1 text-[11px]", live.state.mode === "server" ? "bg-surface-2 text-foreground" : "text-muted-foreground")} data-testid="preview-mode-server">Live server</button>
-        </div>
-        {live.state.mode === "server" ? (
+        {usesLiveServer ? (
           <>
             {live.state.status === "running" ? (
               <Button size="sm" variant="outline" onClick={live.stop} data-testid="button-stop-live-server">Stop</Button>
@@ -220,7 +217,7 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
             ) : null}
           </>
         ) : null}
-        {live.state.mode === "browser" ? (
+        {!usesLiveServer ? (
           <>
         <div role="radiogroup" aria-label="Viewport" className="hidden rounded-md border p-0.5 sm:flex">
           {(
@@ -240,14 +237,14 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
         </Button>
           </>
         ) : null}
-        <Button variant="ghost" size="icon" aria-label={live.state.mode === "server" ? "Reload live preview" : "Rebuild and reload"} onClick={live.state.mode === "server" ? live.reload : p.rebuild} disabled={live.state.mode === "server" && live.state.status !== "running"} data-testid="button-reload-preview">
+        <Button variant="ghost" size="icon" aria-label={usesLiveServer ? "Reload live preview" : "Rebuild and reload"} onClick={usesLiveServer ? live.reload : p.rebuild} disabled={usesLiveServer && live.state.status !== "running"} data-testid="button-reload-preview">
           <RotateCw />
         </Button>
-        {live.state.mode === "browser" ? <Button variant="ghost" size="icon" aria-label="Console" onClick={() => setConsoleOpen(true)} className="relative" data-testid="button-console">
+        {!usesLiveServer ? <Button variant="ghost" size="icon" aria-label="Console" onClick={() => setConsoleOpen(true)} className="relative" data-testid="button-console">
           <Terminal />
           {errorCount ? <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[10px] font-bold text-white">{errorCount}</span> : null}
         </Button> : null}
-        <Button variant="ghost" size="icon" aria-label="Open in new tab" disabled={!result || live.state.mode === "server"} onClick={() => result && openInNewTab(result.html, `${repo} — preview`)} data-testid="button-open-tab">
+        <Button variant="ghost" size="icon" aria-label="Open in new tab" disabled={!result || usesLiveServer} onClick={() => result && openInNewTab(result.html, `${repo} — preview`)} data-testid="button-open-tab">
           <ExternalLink />
         </Button>
         <Button variant="ghost" size="icon" aria-label={full ? "Exit full screen" : "Full screen"} onClick={() => setFull(!full)} data-testid="button-fullscreen">
@@ -278,7 +275,7 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
       ) : null}
 
       <div ref={stage} className={cn("relative min-h-0 flex-1 overflow-hidden", device !== "fit" && "bg-surface-2")}>
-        {live.state.mode === "server" ? (
+        {usesLiveServer ? (
           live.state.status === "running" && live.state.url ? (
             <iframe
               key={live.frameKey}
@@ -361,9 +358,9 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
             </span>
           </div>
         )}
-        {live.state.mode === "browser" && state.status === "building" && result ? <div className="absolute inset-x-0 top-0 h-0.5 animate-pulse bg-primary" aria-hidden /> : null}
+        {!usesLiveServer && state.status === "building" && result ? <div className="absolute inset-x-0 top-0 h-0.5 animate-pulse bg-primary" aria-hidden /> : null}
 
-        {live.state.mode === "browser" && runtimeError && state.status !== "error" ? (
+        {!usesLiveServer && runtimeError && state.status !== "error" ? (
           <div className="absolute inset-x-2 bottom-2 max-h-[70%] overflow-y-auto">
             <div className="relative">
               <button type="button" onClick={p.dismissErrors} aria-label="Dismiss error" className="absolute right-2 top-2 z-10 grid size-8 place-items-center rounded text-muted-foreground hover:bg-surface-2">
@@ -383,7 +380,7 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
         ) : null}
       </div>
 
-      {!full && live.state.mode === "browser" && result ? (
+      {!full && !usesLiveServer && result ? (
         <p className="shrink-0 border-t px-3 py-1.5 text-center font-mono text-[10px] text-muted-foreground">
           Sandboxed · includes unsaved edits · {result.modules} modules{result.packages.length ? ` · ${result.packages.length} npm packages via esm.sh` : ""} · {result.durationMs} ms
         </p>

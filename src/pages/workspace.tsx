@@ -102,7 +102,9 @@ function GitHubWorkspace({ owner, name, tab }: { owner: string; name: string; ta
   const [created, setCreated] = useState<ReadonlySet<string>>(() => new Set());
   const [gitVersion, setGitVersion] = useState(0);
   const [agentMounted, setAgentMounted] = useState(tab === "ai");
+  const [previewMounted, setPreviewMounted] = useState(tab === "preview");
   useEffect(() => { if (tab === "ai") setAgentMounted(true); }, [tab]);
+  useEffect(() => { if (tab === "preview") setPreviewMounted(true); }, [tab]);
 
   // Fall back to the default branch once metadata arrives (or if the remembered branch is gone).
   useEffect(() => {
@@ -195,16 +197,7 @@ function GitHubWorkspace({ owner, name, tab }: { owner: string; name: string; ta
   } else if (tab === "ai") {
     body = null;
   } else if (tab === "preview") {
-    // Public repos: binary assets (images, fonts) load from raw.githubusercontent.com at the pinned commit.
-    const pub = repo.status === "success" && !repo.data.private;
-    const sha = tree.status === "success" ? tree.data.commitSha : null;
-    body = (
-      <PreviewTab
-        owner={owner}
-        name={name}
-        assetUrl={pub && sha ? (p) => `https://raw.githubusercontent.com/${owner}/${name}/${sha}/${p.split("/").map(encodeURIComponent).join("/")}` : undefined}
-      />
-    );
+    body = null;
   } else if (tab === "files") {
     body = <FilesTab gitHref={projectPath(owner, name, "git")} />;
   } else if (tab === "overview") {
@@ -252,6 +245,17 @@ function GitHubWorkspace({ owner, name, tab }: { owner: string; name: string; ta
       {agentMounted && repo.status === "success" && source ? (
         <div className={tab === "ai" ? "animate-view flex min-h-0 w-full min-w-0 flex-1" : "hidden"}>
           <AiTab project={project} branch={shownBranch} />
+        </div>
+      ) : null}
+      {previewMounted && source ? (
+        <div className={tab === "preview" ? "animate-view flex min-h-0 w-full min-w-0 flex-1" : "hidden"}>
+          <PreviewTab
+            owner={owner}
+            name={name}
+            assetUrl={repo.status === "success" && !repo.data.private && tree.status === "success"
+              ? (p) => `https://raw.githubusercontent.com/${owner}/${name}/${tree.data.commitSha}/${p.split("/").map(encodeURIComponent).join("/")}`
+              : undefined}
+          />
         </div>
       ) : null}
       {source ? <PaletteFiles owner={owner} name={name} branch={shownBranch} /> : null}

@@ -1,6 +1,6 @@
 # Live Server Preview
 
-Chrono offers a fast **Browser** preview and an opt-in **Live server** preview. Live server copies the current workspace buffers, including unsaved text edits, into a named Vercel Sandbox microVM for the signed-in user and repository.
+Chrono chooses the preview runtime automatically. Browser-compatible frontend projects run in the browser; projects that need a Node runtime use Live server automatically when their package.json declares a `dev` or `start` script. Live server copies the current workspace buffers, including unsaved text edits, into a named Vercel Sandbox microVM for the signed-in user and repository.
 
 ## Support
 
@@ -12,7 +12,7 @@ Text files, including unsaved edits, are sent from the browser (up to 350 files,
 
 ## Lifecycle
 
-A preview session has a 10-minute maximum runtime and can be stopped manually. The named sandbox retains one snapshot for up to 24 hours. Starting again refreshes the workspace snapshot; snapshots may continue to consume storage until they expire.
+A preview session has a 10-minute maximum runtime and can be stopped manually. It remains mounted while switching tabs within the same project, and is stopped when leaving that project. The named sandbox retains one snapshot for up to 24 hours. Starting again refreshes the workspace snapshot; snapshots may continue to consume storage until they expire.
 
 ## Security
 

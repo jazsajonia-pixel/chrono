@@ -37,9 +37,11 @@ describe("analyzeProject", () => {
     expect(sub.plan).toMatchObject({ supported: true, root: "web/", html: "web/index.html" });
   });
   it("explains unsupported runtimes", async () => {
-    const next = (await plan({ "package.json": '{"dependencies":{"next":"15","react":"19"}}', "app/page.tsx": "" })).plan;
-    expect(next).toMatchObject({ supported: false, label: "Next.js" });
+    const next = (await plan({ "package.json": '{"dependencies":{"next":"15","react":"19"},"scripts":{"dev":"next dev"}}', "app/page.tsx": "" })).plan;
+    expect(next).toMatchObject({ supported: false, label: "Next.js", liveServer: true });
     if (!next.supported) expect(next.reason).toMatch(/server/i);
+    const noNodeScript = (await plan({ "package.json": '{"dependencies":{"next":"15","react":"19"}}', "app/page.tsx": "" })).plan;
+    expect(noNodeScript).toMatchObject({ supported: false, label: "Next.js", liveServer: false });
     expect((await plan({ "requirements.txt": "flask", "app.py": "" })).plan).toMatchObject({ supported: false, label: "Python" });
     expect((await plan({ "package.json": '{"dependencies":{"express":"4"}}', "server.js": "" })).plan).toMatchObject({ supported: false, label: "Node.js server" });
     expect((await plan({ "package.json": '{"dependencies":{"vue":"3","vite":"6"}}', "index.html": "" })).plan).toMatchObject({ supported: false, label: "Vue" });
