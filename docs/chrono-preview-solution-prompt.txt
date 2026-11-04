@@ -1,6 +1,6 @@
 CHRONO PREVIEW PLATFORM — IMPLEMENTATION PROMPT
 
-You are working on the Chrono repository: jazsajonia-pixel/mobdevai.
+You are working on the Chrono repository: jazsajonia-pixel/chrono.
 
 Goal:
 Design and implement a phased preview system that lets users preview their generated applications inside Chrono without manually visiting Netlify. The system must support static frontend projects first, then server-backed projects and temporary databases through isolated preview environments.
