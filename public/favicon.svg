@@ -1,33 +1,3 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" role="img" aria-labelledby="title">
-  <title id="title">Chrono</title>
-  <defs>
-    <linearGradient id="chrono-light" x1="12" y1="10" x2="58" y2="62" gradientUnits="userSpaceOnUse"><stop stop-color="#086DE1"/><stop offset="0.58" stop-color="#087FC7"/><stop offset="1" stop-color="#008F9E"/></linearGradient>
-    <linearGradient id="chrono-dark" x1="12" y1="10" x2="58" y2="62" gradientUnits="userSpaceOnUse"><stop stop-color="#39B9F2"/><stop offset="0.58" stop-color="#26B9E8"/><stop offset="1" stop-color="#16C9CE"/></linearGradient>
-    <style>
-      .ribbon { fill: url(#chrono-light); }
-      .facet-top { fill: #29B6E5; }
-      .facet-bottom { fill: #007D96; }
-      .track, .crossbar { stroke: #008F9E; }
-      .letter { fill: #123552; }
-      .pixel, .endpoint { fill: #06A9B5; }
-      @media (prefers-color-scheme: dark) {
-        .ribbon { fill: url(#chrono-dark); }
-        .facet-top { fill: #8AE6FF; }
-        .facet-bottom { fill: #0A9EB2; }
-        .track, .crossbar { stroke: #16C9CE; }
-        .letter { fill: #E6F1FA; }
-        .pixel, .endpoint { fill: #54DED6; }
-      }
-    </style>
-  </defs>
-  <g transform="translate(4 0)">
-    <path class="ribbon" d="M56 10H34C19.64 10 8 21.64 8 36s11.64 26 26 26h22V50H34c-7.73 0-14-6.27-14-14s6.27-14 14-14h22V10Z"/>
-    <path class="facet-top" d="M45 10H56V22H51L45 16Z"/>
-    <path class="facet-bottom" d="M45 62H56V50H51L45 56Z"/>
-    <path class="track" d="M36 26A10 10 0 0 0 36 46" fill="none" stroke-width="3.2" stroke-linecap="round"/>
-    <path class="letter" d="M29 27H36V33H44V27H51V45H44V39H36V45H29Z"/>
-    <path class="crossbar" d="M44 36H52.5" fill="none" stroke-width="3.2" stroke-linecap="round"/>
-    <rect class="pixel" x="37.4" y="34.1" width="4.2" height="3.8" rx="0.7"/>
-    <rect class="endpoint" x="52.5" y="33.1" width="6" height="5.8" rx="1.2"/>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" role="img" aria-labelledby="title"><title id="title">Chrono</title>
+<defs><linearGradient id="chrono-prism" x1="10" y1="8" x2="62" y2="64" gradientUnits="userSpaceOnUse"><stop stop-color="#2866F2"/><stop offset=".52" stop-color="#258FEA"/><stop offset="1" stop-color="#16B7B0"/></linearGradient><linearGradient id="chrono-cursor" x1="33" y1="29" x2="48" y2="43" gradientUnits="userSpaceOnUse"><stop stop-color="#A8F1FF"/><stop offset="1" stop-color="#48D9DC"/></linearGradient><style>.prism{fill:url(#chrono-prism)}.top{fill:#8FE7FF}.bottom{fill:#087EAC}.cursor{fill:url(#chrono-cursor)}.track{stroke:#48D9DC}.end{fill:#B4F5FF}@media(prefers-color-scheme:dark){.prism{fill:#59C4F8}.top{fill:#E3FBFF}.bottom{fill:#0A9EAA}.cursor{fill:#D7FFFC}.track{stroke:#82F4E9}.end{fill:#F0FFFF}}</style></defs>
+<path class="prism" d="M56 8H33L9 32V40L33 64H56V49H39L25 36L39 23H56V8Z"/><path class="top" d="M33 8H56L43 21H39L25 32L20 27Z" opacity=".76"/><path class="bottom" d="M39 51H43L56 64H33L20 45L25 40Z" opacity=".86"/><path class="cursor" d="M40 28L48 36L40 44L32 36Z"/><path class="track" d="M44.5 36H60" fill="none" stroke-width="3.2" stroke-linecap="round"/><circle class="end" cx="60" cy="36" r="3.4"/></svg>

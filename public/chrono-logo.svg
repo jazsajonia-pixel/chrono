@@ -1,22 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 72" role="img" aria-labelledby="title desc">
-  <title id="title">Chrono</title>
-  <desc id="desc">A faceted, layered C ribbon encloses a block H monogram. A cyan cursor tile and endpoint form a restrained progress cue, beside the Chrono wordmark.</desc>
-  <defs>
-    <linearGradient id="chrono-ribbon" x1="12" y1="10" x2="58" y2="62" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#086DE1"/>
-      <stop offset="0.58" stop-color="#087FC7"/>
-      <stop offset="1" stop-color="#008F9E"/>
-    </linearGradient>
-  </defs>
-  <g transform="translate(4 0)">
-    <path d="M56 10H34C19.64 10 8 21.64 8 36s11.64 26 26 26h22V50H34c-7.73 0-14-6.27-14-14s6.27-14 14-14h22V10Z" fill="url(#chrono-ribbon)"/>
-    <path d="M45 10H56V22H51L45 16Z" fill="#29B6E5"/>
-    <path d="M45 62H56V50H51L45 56Z" fill="#007D96"/>
-    <path d="M36 26A10 10 0 0 0 36 46" fill="none" stroke="#008F9E" stroke-width="3.2" stroke-linecap="round"/>
-    <path d="M29 27H36V33H44V27H51V45H44V39H36V45H29Z" fill="#123552"/>
-    <path d="M44 36H52.5" fill="none" stroke="#008F9E" stroke-width="3.2" stroke-linecap="round"/>
-    <rect x="37.4" y="34.1" width="4.2" height="3.8" rx="0.7" fill="#06A9B5"/>
-    <rect x="52.5" y="33.1" width="6" height="5.8" rx="1.2" fill="#06A9B5"/>
-  </g>
-  <text x="84" y="46" fill="#101827" font-family="Geist, ui-sans-serif, system-ui, sans-serif" font-size="34" font-weight="650" letter-spacing="-1.5">Chrono</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 252 72" role="img" aria-labelledby="title desc">
+<title id="title">Chrono</title><desc id="desc">The Chrono wordmark beside an angular sapphire C ribbon with a diamond cursor.</desc>
+<defs><linearGradient id="chrono-prism" x1="10" y1="8" x2="62" y2="64" gradientUnits="userSpaceOnUse"><stop stop-color="#2866F2"/><stop offset=".52" stop-color="#258FEA"/><stop offset="1" stop-color="#16B7B0"/></linearGradient><linearGradient id="chrono-cursor" x1="33" y1="29" x2="48" y2="43" gradientUnits="userSpaceOnUse"><stop stop-color="#A8F1FF"/><stop offset="1" stop-color="#48D9DC"/></linearGradient></defs>
+<path d="M56 8H33L9 32V40L33 64H56V49H39L25 36L39 23H56V8Z" fill="url(#chrono-prism)"/><path d="M33 8H56L43 21H39L25 32L20 27Z" fill="#8FE7FF" opacity=".72"/><path d="M39 51H43L56 64H33L20 45L25 40Z" fill="#087EAC" opacity=".78"/><path d="M40 28L48 36L40 44L32 36Z" fill="url(#chrono-cursor)"/><path d="M44.5 36H60" stroke="#48D9DC" stroke-width="3.2" stroke-linecap="round"/><circle cx="60" cy="36" r="3.4" fill="#B4F5FF"/>
+<text x="82" y="48" fill="#101C31" font-family="Geist,ui-sans-serif,system-ui,sans-serif" font-size="35" font-weight="680" letter-spacing="-1.7">Chrono</text></svg>
