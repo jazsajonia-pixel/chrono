@@ -37,6 +37,20 @@ export interface PreviewFile {
 export interface PreviewRunner {
   script: "dev" | "start";
   args: string[];
+  /**
+   * The script wraps several processes (concurrently, npm-run-all, turbo, `a && b`…), so host/port
+   * flags can't reach the dev server. Run it untouched and forward PREVIEW_PORT to whatever port the
+   * app opens (see PREVIEW_PROXY_SOURCE).
+   */
+  proxy?: boolean;
+}
+
+/** `vite …` / `next dev …` run directly (optionally behind env assignments or npx), with nothing chained. */
+function runsDirectly(command: string, binary: "vite" | "next"): boolean {
+  if (/&&|\|\||[;|&]/.test(command)) return false;
+  const words = command.trim().split(/\s+/).filter((word) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(word));
+  if (words[0] === "npx" || words[0] === "cross-env") words.shift();
+  return words[0] === binary;
 }
 
 /** Stable per-user, repository and ref identity; never expose the raw user id in sandbox names. */
@@ -163,10 +177,13 @@ export function previewRunner(files: PreviewFile[]): PreviewRunner {
   }
 
   const dependencies = { ...manifest.dependencies, ...manifest.devDependencies };
+  const command = String(scripts[script]);
   if (dependencies.next) {
+    if (script === "dev" && !runsDirectly(command, "next")) return { script, args: [], proxy: true };
     return { script, args: script === "dev" ? ["--hostname", "0.0.0.0", "--port", String(PREVIEW_PORT)] : [] };
   }
   if (dependencies.vite) {
+    if (script === "dev" && !runsDirectly(command, "vite")) return { script, args: [], proxy: true };
     return { script, args: script === "dev" ? ["--host", "0.0.0.0", "--port", String(PREVIEW_PORT), "--strictPort"] : [] };
   }
   if (dependencies["react-scripts"]) return { script, args: [] };
@@ -184,5 +201,78 @@ export function previewStartScript(runner: PreviewRunner): string {
     "trap 'code=$?; printf \"failed\\n\" > .chrono-preview/state; printf \"\\nPreview startup failed (exit %s).\\n\" \"$code\" >> .chrono-preview/server.log; tail -n 60 .chrono-preview/server.log > .chrono-preview/error.log; exit \"$code\"' ERR\n" +
     "if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi\n" +
     "printf 'starting\\n' > .chrono-preview/state\n" +
-    "HOST=0.0.0.0 PORT=" + PREVIEW_PORT + " " + command + "\n";
+    (runner.proxy
+      // The forwarder owns PREVIEW_PORT; leave PORT unset so the app's own processes keep their defaults.
+      ? "node .chrono-preview/proxy.mjs > .chrono-preview/proxy.log 2>&1 &\n" + "unset PORT\n" + command + "\n"
+      : "HOST=0.0.0.0 PORT=" + PREVIEW_PORT + " " + command + "\n");
 }
+
+/**
+ * Dependency-free forwarder for wrapped dev scripts. Listens on PREVIEW_PORT and forwards HTTP and
+ * WebSocket (HMR) traffic to the app's page server: the first localhost URL in server.log that
+ * answers with HTML, else common dev ports. Rewrites Host so dev-server host checks pass.
+ * Answers 502 until the app is up, which the status check treats as "still starting".
+ */
+export const PREVIEW_PROXY_SOURCE = `import http from "node:http";
+import net from "node:net";
+import { readFileSync } from "node:fs";
+const LISTEN = ${PREVIEW_PORT};
+const COMMON = [5173, 3001, 4321, 8080, 4200, 8000, 5000, 3002, 8888];
+let target = null;
+let probing = null;
+function candidates() {
+  let log = "";
+  try { log = readFileSync("/vercel/sandbox/.chrono-preview/server.log", "utf8"); } catch {}
+  const clean = log.replace(/\\u001b\\[[0-9;]*m/g, "");
+  const seen = [...clean.matchAll(/https?:\\/\\/(?:localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0|\\[::1?\\]):(\\d{2,5})/g)].map((m) => Number(m[1]));
+  return [...new Set([...seen, ...COMMON])].filter((p) => p !== LISTEN);
+}
+function probe(port) {
+  return new Promise((resolve) => {
+    const req = http.get({ host: "localhost", port, path: "/", headers: { host: "localhost:" + port, accept: "text/html" }, timeout: 1500 }, (res) => {
+      res.resume();
+      resolve(String(res.headers["content-type"] || "").includes("text/html") ? port : null);
+    });
+    req.on("error", () => resolve(null));
+    req.on("timeout", () => { req.destroy(); resolve(null); });
+  });
+}
+async function findTarget() {
+  if (target) return target;
+  probing ??= (async () => {
+    for (const port of candidates()) if (await probe(port)) { target = port; console.log("forwarding to " + port); break; }
+    probing = null;
+    return target;
+  })();
+  return probing;
+}
+setInterval(() => { if (!target) void findTarget(); }, 1000);
+const server = http.createServer(async (req, res) => {
+  const port = await findTarget();
+  if (!port) { res.writeHead(502, { "content-type": "text/plain" }); res.end("Starting the app\\u2026"); return; }
+  const headers = { ...req.headers, host: "localhost:" + port, "x-forwarded-host": req.headers.host || "", "x-forwarded-proto": "https" };
+  const upstream = http.request({ host: "localhost", port, method: req.method, path: req.url, headers }, (up) => {
+    res.writeHead(up.statusCode || 502, up.headers);
+    up.pipe(res);
+  });
+  upstream.on("error", () => { target = null; if (!res.headersSent) res.writeHead(502); res.end(); });
+  req.pipe(upstream);
+});
+server.on("upgrade", async (req, socket, head) => {
+  const port = await findTarget();
+  if (!port) return socket.destroy();
+  const up = net.connect({ host: "localhost", port }, () => {
+    const lines = [req.method + " " + req.url + " HTTP/1.1"];
+    for (let i = 0; i < req.rawHeaders.length; i += 2) {
+      const name = req.rawHeaders[i];
+      lines.push(name + ": " + (name.toLowerCase() === "host" ? "localhost:" + port : req.rawHeaders[i + 1]));
+    }
+    up.write(lines.join("\\r\\n") + "\\r\\n\\r\\n");
+    if (head && head.length) up.write(head);
+    socket.pipe(up).pipe(socket);
+  });
+  up.on("error", () => socket.destroy());
+  socket.on("error", () => up.destroy());
+});
+server.listen(LISTEN, "0.0.0.0");
+`;
