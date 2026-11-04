@@ -243,7 +243,7 @@ export function CommandPalette() {
               return (
                 <li key={it.id} role="presentation">
                   {header ? (
-                    <p className="px-2.5 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground" aria-hidden>
+                    <p className="px-2.5 pb-1 pt-2.5 section-label" aria-hidden>
                       {header}
                     </p>
                   ) : null}

@@ -152,13 +152,14 @@ export function WorkspaceShell({
       </header>
       <main id="main" tabIndex={-1} className="relative mx-auto flex min-h-0 w-full min-w-0 max-w-6xl flex-1 flex-col overflow-y-auto outline-none">
         {children}
-        {tab !== "ai" ? (
+        {/* Hidden on AI (it is the chat) and Preview (it would cover the running app). */}
+        {tab !== "ai" && tab !== "preview" ? (
           <Link
             href={projectPath(project.owner, project.name, "ai")}
             aria-label={`Start a new AI chat for ${project.name}`}
             title="New AI chat"
             data-testid="floating-new-ai-chat"
-            className="animate-pop fixed bottom-5 right-5 z-40 grid size-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-black/25 transition-transform hover:-translate-y-0.5 active:scale-95 sm:bottom-7 sm:right-7"
+            className="animate-pop fixed bottom-5 right-5 z-40 grid size-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-black/25 transition-transform active:scale-95 sm:bottom-7 sm:right-7"
           >
             <MessageCirclePlus className="size-6" aria-hidden />
           </Link>

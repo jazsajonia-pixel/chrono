@@ -13,7 +13,7 @@ import { useTheme } from "@/stores/theme";
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mt-6 first:mt-0">
-      <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</h2>
+      <h2 className="section-label mb-2">{title}</h2>
       <div className="rounded-lg border bg-surface p-4">{children}</div>
     </section>
   );
@@ -26,7 +26,7 @@ export default function SettingsPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   return (
-    <AppShell title="Settings">
+    <AppShell title="Settings" width="narrow">
       <Section title="Appearance">
         <div role="radiogroup" aria-label="Theme" className="grid grid-cols-2 gap-2">
           {(["dark", "light"] as const).map((t) => (
@@ -47,13 +47,13 @@ export default function SettingsPage() {
       </Section>
 
       <section className="mt-6">
-        <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">AI providers</h2>
+        <h2 className="section-label mb-2">AI providers</h2>
         <div className="space-y-2">
           <ActiveProviderLink />
           <Button asChild variant="secondary" className="w-full justify-between" data-testid="button-chrono-flex">
             <Link href="/app/settings/ai">
-              <span className="flex items-center gap-2"><Sparkles className="size-4 text-primary" aria-hidden /> Chrono Flex</span>
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">Bring your own key <ChevronRight className="size-4" aria-hidden /></span>
+              <span className="flex items-center gap-2"><Sparkles className="size-4 text-primary" aria-hidden /> Manage providers</span>
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">Add your own key <ChevronRight className="size-4" aria-hidden /></span>
             </Link>
           </Button>
         </div>

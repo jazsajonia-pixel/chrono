@@ -23,7 +23,23 @@ export function SkipLink() {
 
 const WORKSPACE_LABELS = ["Home", "Projects", "AI", "Skills", "Preview"];
 
-export function AppShell({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
+/**
+ * The first block of every app page. The page title already sits in the header (h1), so the
+ * intro only adds one line of context and, optionally, the page's primary action.
+ */
+export function PageIntro({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+      <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">{children}</p>
+      {action}
+    </div>
+  );
+}
+
+/** Page widths: "wide" for hubs and lists, "narrow" for settings and forms. */
+const WIDTHS = { wide: "max-w-6xl", narrow: "max-w-3xl" } as const;
+
+export function AppShell({ title, actions, width = "wide", children }: { title: string; actions?: ReactNode; width?: keyof typeof WIDTHS; children: ReactNode }) {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
@@ -73,7 +89,7 @@ export function AppShell({ title, actions, children }: { title: string; actions?
             </button>
           </div>
         </header>
-        <main id="main" tabIndex={-1} className="route-enter mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 pb-12 pt-6 outline-none sm:px-6">
+        <main id="main" tabIndex={-1} className={`route-enter mx-auto w-full min-w-0 flex-1 px-4 pb-12 pt-6 outline-none sm:px-6 ${WIDTHS[width]}`}>
           {children}
         </main>
       </div>

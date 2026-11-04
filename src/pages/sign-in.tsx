@@ -1,22 +1,31 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Redirect } from "wouter";
 import { ChevronLeft, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GitHubIcon, LogoMark } from "@/components/brand";
 import { ErrorState } from "@/components/states";
 import { useSession } from "@/stores/session";
-import { takeAuthError, useGitHubSignIn } from "@/features/auth/github-sign-in";
+import { takeAuthError, takeSignInHandoff, useGitHubSignIn } from "@/features/auth/github-sign-in";
 import { AppError, isErrorCode } from "@/lib/errors";
 
 export default function SignInPage() {
   const { isAuthed, loading, endedReason, session } = useSession();
   const { start, pending, error } = useGitHubSignIn();
-  const [includePrivate, setIncludePrivate] = useState(false);
+  // Another host sent us here mid-sign-in (see useGitHubSignIn): carry on without a second click.
+  const [handoff] = useState(takeSignInHandoff);
+  const [includePrivate, setIncludePrivate] = useState(() => handoff?.includePrivate ?? false);
   // Errors reported by the OAuth callback (?auth_error=CODE) or a server-ended session.
   const [callbackError] = useState(() => {
     const code = takeAuthError();
     return code ? new AppError(isErrorCode(code) ? code : "INTERNAL") : null;
   });
+
+  const handoffStarted = useRef(false);
+  useEffect(() => {
+    if (!handoff || loading || isAuthed || handoffStarted.current) return;
+    handoffStarted.current = true;
+    void start(handoff.includePrivate);
+  }, [handoff, loading, isAuthed, start]);
 
   if (!loading && isAuthed && session.mode === "github") return <Redirect to="/app/projects" replace />;
 

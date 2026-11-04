@@ -30,7 +30,7 @@ describe("Live preview", () => {
     rememberRepo("octo", "pocket-tasks", "main");
     renderApp("/app/preview");
     expect(await screen.findByTestId("link-preview-octo-pocket-tasks")).toHaveAttribute("href", expect.stringContaining(`${SAMPLE_PATH}/preview`));
-    expect(screen.getByText(/Not in the browser preview yet/)).toBeInTheDocument();
+    expect(screen.getByText(/Not supported yet/)).toBeInTheDocument();
   });
 
   it("explains how to get a project into the list when none were opened", async () => {

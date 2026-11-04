@@ -34,6 +34,7 @@ export default function HistoryPage({ params }: { params?: { owner?: string; rep
   return (
     <AppShell
       title="Task history"
+      width="narrow"
       actions={
         <Link href="/app/ai" className="-mr-2 inline-flex h-11 items-center gap-1 rounded-md px-2 text-sm text-muted-foreground hover:bg-surface-2 hover:text-foreground">
           <ChevronLeft className="size-4" aria-hidden /> AI

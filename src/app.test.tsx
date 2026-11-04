@@ -23,7 +23,7 @@ function renderAt(path: string) {
 describe("routing", () => {
   it("renders the landing page", () => {
     renderAt("/");
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/Build what’s next\.From anywhere\./);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/Edit, preview and ship your GitHub repos from your phone\./);
     expect(screen.getByTestId("button-start-building")).toBeInTheDocument();
   });
 

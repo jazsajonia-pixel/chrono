@@ -9,7 +9,11 @@ const apiPort = process.env.DEV_API_PORT ?? "8787";
 
 export default defineConfig({
   plugins: [react()],
-  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    // Lets an open tab notice a newer deploy (compared with /api/health `commit`).
+    __BUILD_COMMIT__: JSON.stringify((process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.COMMIT_REF ?? "").slice(0, 7)),
+  },
   // Relative base so the built bundle works from any host path (Netlify root or a preview sub-path).
   base: "./",
   resolve: {

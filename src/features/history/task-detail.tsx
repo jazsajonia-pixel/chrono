@@ -68,7 +68,7 @@ export function TaskDetailSheet({ entry, onOpenChange, onDelete }: { entry: Hist
             </dl>
 
             <section>
-              <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Prompt</h3>
+              <h3 className="mb-1 section-label">Prompt</h3>
               <p className="whitespace-pre-wrap break-words rounded-lg border bg-surface p-3" data-testid="text-task-prompt">
                 {e.prompt}
               </p>
@@ -76,7 +76,7 @@ export function TaskDetailSheet({ entry, onOpenChange, onDelete }: { entry: Hist
             </section>
 
             <section>
-              <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Files changed ({e.files.length})</h3>
+              <h3 className="mb-1 section-label">Files changed ({e.files.length})</h3>
               {e.files.length ? (
                 <ul className="divide-y rounded-lg border bg-surface" data-testid="list-task-files">
                   {e.files.map((f) => (
@@ -93,7 +93,7 @@ export function TaskDetailSheet({ entry, onOpenChange, onDelete }: { entry: Hist
 
             {e.result ? (
               <section>
-                <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{e.status === "failed" && e.ref.task.error ? "Error" : "Result"}</h3>
+                <h3 className="mb-1 section-label">{e.status === "failed" && e.ref.task.error ? "Error" : "Result"}</h3>
                 <p className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border bg-surface p-3 text-[13px] leading-relaxed" data-testid="text-task-result">
                   {e.result}
                 </p>
@@ -101,7 +101,7 @@ export function TaskDetailSheet({ entry, onOpenChange, onDelete }: { entry: Hist
             ) : null}
 
             <section>
-              <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Commit / PR</h3>
+              <h3 className="mb-1 section-label">Commit / PR</h3>
               {e.ref.task.shipped ? <ShippedNote info={e.ref.task.shipped} /> : <p className="text-muted-foreground">Not committed yet.</p>}
             </section>
 

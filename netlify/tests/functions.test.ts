@@ -155,3 +155,22 @@ describe("OAuth round trip", () => {
     expect(s.headers.getSetCookie().join()).toMatch(/Max-Age=0/);
   });
 });
+
+describe("canonical host (APP_URL) in production", () => {
+  beforeEach(() => configureEnv());
+  const OTHER = "https://other-alias.example";
+
+  it("tells a browser on another production host to move to APP_URL", async () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    const s = await authSession(new Request(`${OTHER}/api/auth/session`));
+    expect(await s.json()).toEqual({ authenticated: false, canonicalOrigin: ORIGIN });
+  });
+
+  it("does nothing on the APP_URL host or outside production", async () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    expect(await (await authSession(new Request(`${ORIGIN}/api/auth/session`))).json()).toEqual({ authenticated: false });
+    vi.stubEnv("VERCEL_ENV", "preview");
+    expect(await (await authSession(new Request(`${OTHER}/api/auth/session`))).json()).toEqual({ authenticated: false });
+  });
+});
+

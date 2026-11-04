@@ -32,13 +32,14 @@ export default {
       },
       borderRadius: { lg: "12px", md: "8px", sm: "6px" },
       spacing: { safe: "env(safe-area-inset-bottom)" },
+      // Every Tailwind transition shares the motion tokens in index.css.
+      transitionTimingFunction: { DEFAULT: "var(--ease-out)", out: "var(--ease-out)", in: "var(--ease-in)" },
+      transitionDuration: { DEFAULT: "var(--dur-base)", fast: "var(--dur-fast)", base: "var(--dur-base)", slow: "var(--dur-slow)" },
       keyframes: {
         shimmer: { "0%": { backgroundPosition: "-200% 0" }, "100%": { backgroundPosition: "200% 0" } },
-        "fade-up": { from: { opacity: "0", transform: "translateY(6px)" }, to: { opacity: "1", transform: "none" } },
       },
       animation: {
         shimmer: "shimmer 1.6s linear infinite",
-        "fade-up": "fade-up 220ms cubic-bezier(0.16, 1, 0.3, 1) both",
       },
     },
   },

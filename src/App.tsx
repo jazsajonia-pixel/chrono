@@ -10,6 +10,7 @@ import SignInPage from "@/pages/sign-in";
 import HomePage from "@/pages/home";
 import NotFoundPage from "@/pages/not-found";
 import { Spinner } from "@/components/states";
+import { UpdatePrompt } from "@/components/update-prompt";
 import { CommandPalette } from "@/features/command/command-palette";
 
 // The workspace carries the editor (CodeMirror) — load it only when a project is opened.
@@ -99,6 +100,7 @@ export default function App() {
           <Router hook={useHashLocation}>
             <AppRoutes />
             <CommandPalette />
+            <UpdatePrompt />
           </Router>
         </SessionProvider>
       </ThemeProvider>

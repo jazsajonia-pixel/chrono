@@ -72,6 +72,19 @@ export function appOrigin(req: Request, env: Env = process.env): string {
   return new URL(req.url).origin;
 }
 
+/**
+ * When a production deployment is reachable on several hosts (e.g. a project domain and a branch
+ * alias) but OAuth is bound to APP_URL, cookies set on the "other" host never reach the callback —
+ * sign-in fails once and old sessions look expired. Returns the APP_URL origin the browser should
+ * move to, or null when the request is already on it (or this isn't production).
+ */
+export function canonicalRedirectOrigin(req: Request, env: Env = process.env): string | null {
+  if (!isSet(env.APP_URL)) return null;
+  if (!(isProduction(env) || env.VERCEL_ENV === "production")) return null;
+  const canonical = appOrigin(req, env);
+  return canonical === new URL(req.url).origin ? null : canonical;
+}
+
 /** Secret used to encrypt stored AI provider keys, or null when ENCRYPTION_KEY isn't usable. */
 export function encryptionSecret(env: Env = process.env): string | null {
   return capabilities(env).encryption ? env.ENCRYPTION_KEY!.trim() : null;

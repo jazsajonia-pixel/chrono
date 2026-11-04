@@ -179,7 +179,7 @@ export function ProjectDashboard({
       <Card title="AI" testId="card-ai">
         <ActiveProviderLink className="border-0 bg-background p-3" />
         <div className="mt-3 flex items-center justify-between">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent tasks</h3>
+          <h3 className="section-label">Recent tasks</h3>
           <Link href={`/app/ai/history/${encodeURIComponent(project.owner)}/${encodeURIComponent(project.name)}`} className="-my-2 inline-flex h-11 items-center gap-1 px-1 text-sm text-primary hover:underline" data-testid="link-dashboard-history">
             <History className="size-3.5" aria-hidden /> History
           </Link>

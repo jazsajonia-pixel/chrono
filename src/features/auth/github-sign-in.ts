@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { api } from "@/lib/api";
 import { AppError } from "@/lib/errors";
+import { browserNav } from "@/lib/navigate";
 
 /** Origins we're willing to send the browser to for OAuth (github.com, or a configured GHE/mock). */
 export function allowedOAuthOrigins(): string[] {
@@ -27,7 +28,14 @@ export function useGitHubSignIn() {
       });
       const url = new URL(authorizeUrl);
       if (!allowedOAuthOrigins().includes(url.origin)) throw new AppError("OAUTH_EXCHANGE_FAILED", "Unexpected OAuth origin");
-      window.location.assign(url.toString());
+      // GitHub returns to redirect_uri's host. If that's not this host, the state cookie we just got
+      // won't be sent there and the first attempt fails — restart sign-in on that host instead.
+      const callbackOrigin = safeOrigin(url.searchParams.get("redirect_uri"));
+      if (callbackOrigin && callbackOrigin !== window.location.origin && callbackOrigin.startsWith("https://")) {
+        browserNav.assign(`${callbackOrigin}/?${SIGNIN_PARAM}=github${includePrivate ? "&private=1" : ""}#/signin`);
+        return;
+      }
+      browserNav.assign(url.toString());
     } catch (err) {
       setError(err);
       setPending(false);
@@ -35,6 +43,29 @@ export function useGitHubSignIn() {
   }, []);
 
   return { start, pending, error };
+}
+
+const SIGNIN_PARAM = "signin";
+
+function safeOrigin(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+/** Reads and clears `?signin=github[&private=1]` (a hand-off from another host). Returns includePrivate. */
+export function takeSignInHandoff(): { includePrivate: boolean } | null {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get(SIGNIN_PARAM) !== "github") return null;
+  const includePrivate = params.get("private") === "1";
+  params.delete(SIGNIN_PARAM);
+  params.delete("private");
+  const qs = params.toString();
+  window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
+  return { includePrivate };
 }
 
 /** Reads and clears `?auth_error=CODE` left by the OAuth callback. */
