@@ -177,7 +177,8 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
               ? live.state.status === "running" ? "Live server ready"
                 : live.state.status === "starting" ? (live.state.message ?? "Starting live server…")
                 : live.state.status === "stopping" ? "Stopping live server…"
-                : live.state.status === "failed" ? "Live server failed" : "Live server stopped"
+                : live.state.status === "failed" ? "Live server failed"
+                : live.state.status === "idle" ? "Live server not started" : "Live server stopped"
               : state.status === "analyzing" ? "Detecting project…"
                 : state.status === "building" ? "Building…"
                 : state.status === "error" ? "Build failed"
@@ -302,8 +303,14 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
                   {live.state.status === "starting" ? (live.state.message ?? "Starting your project…")
                     : live.state.status === "failed" ? (live.state.error ?? live.state.message ?? "The live server could not start.")
                     : live.state.status === "stopping" ? "Stopping your server…"
-                    : "Your live server is stopped."}
+                    : live.state.status === "idle" ? "Run this project's dev server in a cloud sandbox."
+                    : (live.state.message ?? "Your live server is stopped.")}
                 </p>
+                {live.state.status === "idle" || live.state.status === "stopped" ? (
+                  <Button size="sm" onClick={live.start} data-testid="button-start-live-server-body">
+                    {live.state.status === "idle" ? "Start live server" : "Start again"}
+                  </Button>
+                ) : null}
                 <p className="text-xs text-muted-foreground">
                   Chrono copies current editor files, including unsaved edits, into an isolated Vercel Sandbox. The server expires after 10 minutes. Anyone with the preview URL can view the site, so do not put secrets in project files.
                 </p>
