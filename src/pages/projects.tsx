@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Archive, ChevronRight, GitBranch, GitFork, Lock, Plus, Search } from "lucide-react";
-import { AppShell } from "@/components/layout/app-shell";
+import { AppShell, PageIntro } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -171,19 +171,18 @@ export default function ProjectsPage() {
   const gh = session.mode === "github" ? session : null;
   return (
     <AppShell title="Projects">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4 animate-enter">
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">Your codebase</p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-tight">Projects</h2>
-          <p className="mt-1 max-w-lg text-sm text-muted-foreground">Open a repository and turn it into a focused Chrono workspace.</p>
-        </div>
-        {gh ? (
-          <Button onClick={() => setCreating(true)} data-testid="button-new-repo">
-            <Plus className="size-4" aria-hidden /> New repository
-          </Button>
-        ) : null}
-      </div>
-      <div className="studio-panel p-4 sm:p-5 animate-enter [animation-delay:60ms]">
+      <PageIntro
+        action={
+          gh ? (
+            <Button onClick={() => setCreating(true)} data-testid="button-new-repo">
+              <Plus className="size-4" aria-hidden /> New repository
+            </Button>
+          ) : null
+        }
+      >
+        Open a repository to edit its files, ask the agent for changes and preview the result.
+      </PageIntro>
+      <div className="studio-panel p-4 sm:p-5">
         <GitHubProjects />
       </div>
       {gh ? (

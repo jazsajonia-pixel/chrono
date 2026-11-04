@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { ArrowLeft, KeyRound, Plus } from "lucide-react";
-import { AppShell } from "@/components/layout/app-shell";
+import { AppShell, PageIntro } from "@/components/layout/app-shell";
 import { ConfirmSheet } from "@/components/dialogs";
 import { EmptyState, ErrorState } from "@/components/states";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,8 @@ export default function AIProvidersPage() {
 
   return (
     <AppShell
-      title="Chrono Flex"
+      title="AI providers"
+      width="narrow"
       actions={
         canAdd ? (
           <Button size="sm" onClick={openAdd} data-testid="button-add-provider">
@@ -41,10 +42,10 @@ export default function AIProvidersPage() {
         ) : null
       }
     >
-      <p className="mb-3 text-sm text-muted-foreground">Bring your own API key, choose a provider, and make it the default for your AI workspace.</p>
-      <Link href="/app/settings" className="-ml-1 mb-3 inline-flex h-11 items-center gap-1.5 px-1 text-sm text-muted-foreground hover:text-foreground">
+      <Link href="/app/settings" className="-ml-1 -mt-2 mb-2 inline-flex h-11 items-center gap-1.5 px-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" aria-hidden /> Settings
       </Link>
+      <PageIntro>Add your own API key, choose a model and make it the default for the agent.</PageIntro>
 
       {state.status === "loading" ? (
         <div className="space-y-3" aria-label="Loading providers">

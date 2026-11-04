@@ -6,7 +6,7 @@ Chrono offers a fast **Browser** preview and an opt-in **Live server** preview. 
 
 The first version runs Node.js projects with a root package.json containing a dev or start script. Vite and Next.js receive host/port arguments (Vite also gets the sandbox's public hostname via `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS`, otherwise Vite 5.4.12+ answers "Blocked request. This host is not allowed"); Create React App and generic Node servers receive HOST=0.0.0.0 and PORT=3000. npm install runs inside the VM.
 
-Only text files are transferred (up to 350 files, 500 KB per file and 1.8 MB total). Binary assets, generated output, dependencies, VCS metadata and local secret/config files are excluded, so projects relying on images or fonts may not render completely yet.
+Text files, including unsaved edits, are sent from the browser (up to 350 files, 500 KB per file and 1.8 MB total). Images, fonts and other binary files are copied from GitHub at the previewed commit (up to 400 files, 8 MB each, 40 MB total). Generated output, dependencies, VCS metadata and local secret/config files are never copied.
 
 ## Lifecycle
 

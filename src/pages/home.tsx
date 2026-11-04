@@ -15,7 +15,7 @@ import { timeAgo } from "@/lib/utils";
 function QuickAction({ icon: Icon, title, description, testId, href, onClick }: { icon: typeof Sparkles; title: string; description: string; testId: string; href?: string; onClick?: () => void }) {
   const body = (
     <>
-      <span className="mb-3 grid size-9 place-items-center rounded-lg bg-primary/10 text-primary transition-transform duration-300 group-hover:scale-110">
+      <span className="mb-3 grid size-9 place-items-center rounded-lg bg-primary/10 text-primary">
         <Icon className="size-4" aria-hidden />
       </span>
       <span className="block text-sm font-semibold">{title}</span>
@@ -43,7 +43,7 @@ function AiStatus() {
   return (
     <section className="mt-8 grid gap-3 sm:grid-cols-2" aria-label="AI setup">
       <Link href="/app/settings/ai" className="lift rounded-xl border bg-surface p-4 hover:border-primary/40" data-testid="card-ai-provider">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Default AI provider</p>
+        <p className="section-label">Default AI provider</p>
         {state.status === "loading" ? (
           <Skeleton className="mt-2 h-5 w-2/3" />
         ) : state.status === "error" ? (
@@ -58,7 +58,7 @@ function AiStatus() {
         <p className="mt-1 text-xs text-muted-foreground">Manage keys and models</p>
       </Link>
       <Link href="/app/skills" className="lift rounded-xl border bg-surface p-4 hover:border-primary/40" data-testid="card-skills">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Skills</p>
+        <p className="section-label">Skills</p>
         <p className="mt-2 text-sm font-semibold tabular">
           {on} of {skills.all.length} enabled
         </p>
@@ -81,9 +81,8 @@ export default function HomePage() {
 
   return (
     <AppShell title="Home">
-      <section className="animate-enter rounded-xl border bg-surface p-5 sm:p-7">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">AI development workspace</p>
-        <h2 className="mt-2 max-w-xl text-2xl font-semibold tracking-tight sm:text-3xl">{first ? `Welcome back, ${first}.` : "Welcome back."}</h2>
+      <section className="rounded-xl border bg-surface p-5 sm:p-7">
+        <h2 className="max-w-xl text-2xl font-semibold tracking-tight sm:text-3xl">{first ? `Welcome back, ${first}.` : "Welcome back."}</h2>
         <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">Open a repository, ask Chrono to change it, preview the result, and ship it as a commit or pull request.</p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
           <Link
@@ -101,7 +100,7 @@ export default function HomePage() {
             <ArrowRight className="size-4 text-primary transition-transform group-hover:translate-x-0.5" aria-hidden />
           </Link>
           <Button variant="secondary" className="min-h-12" onClick={openCommandPalette} data-testid="button-home-search">
-            <Search className="size-4" aria-hidden /> Search <kbd className="ml-1 rounded border px-1.5 font-mono text-[10px] text-muted-foreground">{isMac() ? "⌘K" : "Ctrl K"}</kbd>
+            <Search className="size-4" aria-hidden /> Search <kbd className="ml-1 hidden rounded border px-1.5 font-mono text-[10px] text-muted-foreground md:inline">{isMac() ? "⌘K" : "Ctrl K"}</kbd>
           </Button>
         </div>
       </section>
@@ -113,8 +112,8 @@ export default function HomePage() {
       </div>
 
       <section className="mt-8">
-        <div className="mb-3 flex items-end justify-between">
-          <h2 className="text-lg font-semibold tracking-tight">Continue building</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="section-label">Continue building</h2>
           <Link href="/app/projects" className="text-xs font-semibold text-primary hover:underline">
             View all
           </Link>

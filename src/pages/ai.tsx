@@ -2,7 +2,7 @@ import { ShippedNote } from "@/features/git/shipped-note";
 import { useMemo } from "react";
 import { Link } from "wouter";
 import { MessageSquareCode, Sparkles } from "lucide-react";
-import { AppShell } from "@/components/layout/app-shell";
+import { AppShell, PageIntro } from "@/components/layout/app-shell";
 import { EmptyState } from "@/components/states";
 import { Button } from "@/components/ui/button";
 import { ActiveProviderLink } from "@/features/ai/active-provider";
@@ -14,16 +14,16 @@ export default function AIPage() {
   const recent = useMemo(() => recentAgentTasks(), []);
   return (
     <AppShell title="AI">
-      <div className="mb-7"><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">Intelligence layer</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">AI workspace</h2><p className="mt-1 max-w-xl text-sm text-muted-foreground">Choose how Chrono thinks, then review the work it has helped you ship.</p></div>
+      <PageIntro>Pick the model the agent uses, then pick up any recent task where you left it.</PageIntro>
       <div className="space-y-6">
-        <section className="studio-panel studio-glow p-5">
-          <div className="mb-4 flex items-center gap-2"><span className="grid size-9 place-items-center rounded-xl bg-primary/15 text-primary"><Sparkles className="size-4" aria-hidden /></span><div><h2 className="text-sm font-semibold">Active intelligence</h2><p className="text-xs text-muted-foreground">The model behind your workspace</p></div></div>
+        <section className="studio-panel p-5" aria-labelledby="ai-provider-heading">
+          <div className="mb-4"><h2 id="ai-provider-heading" className="text-sm font-semibold">Default AI provider</h2><p className="text-xs text-muted-foreground">Used by the agent in every project</p></div>
           <ActiveProviderLink />
         </section>
 
         <section className="studio-panel p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent agent tasks</h2>
+            <h2 className="section-label">Recent agent tasks</h2>
             {recent.length ? (
               <Link href="/app/ai/history" className="-my-2 inline-flex h-11 items-center px-1 text-sm font-medium text-primary hover:underline" data-testid="link-task-history">
                 Full history

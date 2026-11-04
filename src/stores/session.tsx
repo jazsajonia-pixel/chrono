@@ -3,6 +3,7 @@ import type { Session } from "@/types/session";
 import type { AuthSessionResponse } from "@/types/github";
 import { safeStorage } from "@/lib/storage";
 import { api, SESSION_EXPIRED_EVENT } from "@/lib/api";
+import { browserNav } from "@/lib/navigate";
 import type { ErrorCode } from "@/lib/errors";
 
 /**
@@ -29,9 +30,23 @@ function clearLegacyDemoFlag(): void {
   safeStorage.remove("demo-session", "session");
 }
 
+/** Same page on the host OAuth is bound to. Keeps path, query and #route. */
+function moveToCanonical(origin: string): boolean {
+  try {
+    const target = new URL(origin);
+    if (target.protocol !== "https:" || target.origin === window.location.origin) return false;
+    const { pathname, search, hash } = window.location;
+    browserNav.replace(`${target.origin}${pathname}${search}${hash}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function fetchGitHubSession(): Promise<Session> {
   try {
     const res = await api<AuthSessionResponse>("/auth/session", { timeoutMs: 8_000 });
+    if (!res.authenticated && res.canonicalOrigin && moveToCanonical(res.canonicalOrigin)) return new Promise<Session>(() => {});
     if (res.authenticated) {
       return { mode: "github", user: res.user, scopes: res.scopes, includePrivate: res.includePrivate, expiresAt: res.expiresAt };
     }

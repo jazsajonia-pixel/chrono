@@ -71,7 +71,7 @@ export function PlusMenu({ onAddFiles, disabled }: { onAddFiles: () => void; dis
           open && "border-primary/50 bg-primary/10 text-primary",
         )}
       >
-        <Plus className={cn("size-4 transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]", open && "rotate-45")} aria-hidden />
+        <Plus className={cn("size-4 transition-transform duration-base", open && "rotate-45")} aria-hidden />
       </button>
 
       {open ? (

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Cloud, HardDrive, Pencil, Plus, Sparkles, Trash2, Wand2 } from "lucide-react";
-import { AppShell } from "@/components/layout/app-shell";
+import { AppShell, PageIntro } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -45,18 +45,16 @@ export default function SkillsPage() {
   return (
     <AppShell
       title="Skills"
+      width="narrow"
       actions={
         <Button size="sm" onClick={() => setEditing("new")} disabled={atLimit} data-testid="button-add-skill">
           <Plus /> Add skill
         </Button>
       }
     >
-      <div className="mb-6 animate-enter">
-        <h2 className="text-2xl font-semibold tracking-tight">Skills</h2>
-        <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-          Reusable guidance Chrono adds to every AI request. Enabled skills shape how the agent works — they never change what it's allowed to do.
-        </p>
-      </div>
+      <PageIntro>
+        Reusable guidance Chrono adds to every AI request. Enabled skills shape how the agent works — they never change what it's allowed to do.
+      </PageIntro>
 
       <p role="status" aria-live="polite" className="sr-only">
         {status?.text ?? ""}
@@ -71,9 +69,9 @@ export default function SkillsPage() {
       ) : null}
 
       <section aria-labelledby="builtin-heading" className="mb-8">
-        <h3 id="builtin-heading" className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <h2 id="builtin-heading" className="section-label mb-2">
           Built-in
-        </h3>
+        </h2>
         <ul className="stagger divide-y overflow-hidden rounded-lg border bg-surface" data-testid="list-builtin-skills">
           {BUILTIN_SKILLS.map((s) => {
             const on = skills.enabled.includes(s.id);
@@ -95,9 +93,9 @@ export default function SkillsPage() {
 
       <section aria-labelledby="custom-heading">
         <div className="mb-2 flex items-end justify-between gap-3">
-          <h3 id="custom-heading" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <h2 id="custom-heading" className="section-label">
             Your skills <span className="font-mono normal-case">{skills.custom.length}/{SKILL_LIMITS.maxCustom}</span>
-          </h3>
+          </h2>
           <StorageNote storage={skills.storage} />
         </div>
 

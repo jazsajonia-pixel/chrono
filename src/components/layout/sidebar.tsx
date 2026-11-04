@@ -44,8 +44,9 @@ export function Sidebar({
       ) : null}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:translate-x-0",
-          open ? "translate-x-0 shadow-2xl shadow-black/30" : "-translate-x-full",
+          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform ease-out md:translate-x-0",
+          // Enter at the slow duration, leave faster.
+          open ? "translate-x-0 shadow-2xl shadow-black/30 duration-slow" : "-translate-x-full duration-base",
         )}
         aria-label={label}
         data-state={open || desktop ? "open" : "closed"}
@@ -100,7 +101,7 @@ export function Sidebar({
 export function SidebarSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="mb-6 last:mb-0">
-      <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-sidebar-muted">{title}</p>
+      <p className="mb-2 px-3 section-label !text-sidebar-muted">{title}</p>
       <div className="space-y-0.5">{children}</div>
     </div>
   );
@@ -137,11 +138,11 @@ export function SidebarLink({
       <span
         aria-hidden
         className={cn(
-          "absolute inset-y-2 left-0 w-0.5 rounded-full bg-primary transition-transform duration-300",
+          "absolute inset-y-2 left-0 w-0.5 rounded-full bg-primary transition-transform",
           active ? "scale-y-100" : "scale-y-0",
         )}
       />
-      <Icon className="size-4 shrink-0 transition-transform duration-200 group-hover:scale-110" aria-hidden />
+      <Icon className="size-4 shrink-0" aria-hidden />
       <span className="truncate">{label}</span>
       {trailing}
     </Link>

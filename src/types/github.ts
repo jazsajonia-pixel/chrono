@@ -11,7 +11,8 @@ export interface SessionUser {
 }
 
 export type AuthSessionResponse =
-  | { authenticated: false }
+  /** canonicalOrigin: this host isn't the one OAuth is bound to; the client should move there. */
+  | { authenticated: false; canonicalOrigin?: string }
   | { authenticated: true; user: SessionUser; scopes: string[]; includePrivate: boolean; expiresAt: string };
 
 export interface RepoPermissions {
