@@ -1,21 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" role="img" aria-labelledby="title desc">
-  <title id="title">Chrono mark</title>
-  <desc id="desc">A faceted, layered C ribbon encloses a block H monogram. A cyan cursor tile and endpoint suggest code advancing through time.</desc>
-  <defs>
-    <linearGradient id="chrono-ribbon" x1="12" y1="10" x2="58" y2="62" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#39B9F2"/>
-      <stop offset="0.58" stop-color="#26B9E8"/>
-      <stop offset="1" stop-color="#16C9CE"/>
-    </linearGradient>
-  </defs>
-  <g transform="translate(4 0)">
-    <path d="M56 10H34C19.64 10 8 21.64 8 36s11.64 26 26 26h22V50H34c-7.73 0-14-6.27-14-14s6.27-14 14-14h22V10Z" fill="url(#chrono-ribbon)"/>
-    <path d="M45 10H56V22H51L45 16Z" fill="#8AE6FF"/>
-    <path d="M45 62H56V50H51L45 56Z" fill="#0A9EB2"/>
-    <path d="M36 26A10 10 0 0 0 36 46" fill="none" stroke="#16C9CE" stroke-width="3.2" stroke-linecap="round"/>
-    <path d="M29 27H36V33H44V27H51V45H44V39H36V45H29Z" fill="#E6F1FA"/>
-    <path d="M44 36H52.5" fill="none" stroke="#16C9CE" stroke-width="3.2" stroke-linecap="round"/>
-    <rect x="37.4" y="34.1" width="4.2" height="3.8" rx="0.7" fill="#54DED6"/>
-    <rect x="52.5" y="33.1" width="6" height="5.8" rx="1.2" fill="#54DED6"/>
-  </g>
-</svg>
+<title id="title">Chrono mark</title><desc id="desc">An angular sapphire ribbon forms an open C around a diamond cursor, representing code moving along a timeline.</desc>
+<defs><linearGradient id="chrono-prism" x1="10" y1="8" x2="62" y2="64" gradientUnits="userSpaceOnUse"><stop stop-color="#71B9FF"/><stop offset=".52" stop-color="#49C8F4"/><stop offset="1" stop-color="#39E1D1"/></linearGradient><linearGradient id="chrono-cursor" x1="33" y1="29" x2="48" y2="43" gradientUnits="userSpaceOnUse"><stop stop-color="#F2FDFF"/><stop offset="1" stop-color="#8AF5E8"/></linearGradient></defs>
+<path d="M56 8H33L9 32V40L33 64H56V49H39L25 36L39 23H56V8Z" fill="url(#chrono-prism)"/><path d="M33 8H56L43 21H39L25 32L20 27Z" fill="#E3FBFF" opacity=".76"/><path d="M39 51H43L56 64H33L20 45L25 40Z" fill="#0A9EAA" opacity=".86"/><path d="M40 28L48 36L40 44L32 36Z" fill="url(#chrono-cursor)"/><path d="M44.5 36H60" stroke="#82F4E9" stroke-width="3.2" stroke-linecap="round"/><circle cx="60" cy="36" r="3.4" fill="#F0FFFF"/></svg>
