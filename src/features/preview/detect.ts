@@ -29,6 +29,8 @@ export interface PreviewPlanUnsupported {
   label: string;
   reason: string;
   hint: string;
+  /** True only when a Node package declares a script the live sandbox can run. */
+  liveServer: boolean;
 }
 
 export type PreviewPlan = PreviewPlanOk | PreviewPlanUnsupported;
@@ -91,6 +93,7 @@ export async function analyzeProject(paths: readonly string[], read: (path: stri
   const pkg = parsePkg(set.has(`${root}package.json`) ? await read(`${root}package.json`) : null);
   const deps = { ...pkg?.devDependencies, ...pkg?.dependencies };
   const has = (d: string) => d in deps;
+  const liveServer = Boolean(pkg?.scripts?.dev || pkg?.scripts?.start);
 
   if (!pkg && !htmlFiles.length) {
     const lang = paths.some((p) => /(^|\/)(requirements\.txt|pyproject\.toml|manage\.py)$/.test(p))
@@ -111,13 +114,14 @@ export async function analyzeProject(paths: readonly string[], read: (path: stri
       label: lang ?? "No web entry point",
       reason: lang ? `${lang} code runs on a server or native runtime — the browser preview only runs frontend code.` : "There's no index.html or package.json, so there's nothing the browser can render.",
       hint: lang ? HINT_SERVER : "Add an index.html (or a Vite app) to preview it here.",
+      liveServer: false,
     };
   }
 
   for (const [dep, label, reason] of UNSUPPORTED_DEPS) {
     if (typeof dep === "string" ? has(dep) : Object.keys(deps).some((d) => dep.test(d))) {
       // A Vite + React app may list e.g. "vue" by accident — only bail on frameworks that own the entry.
-      return { supported: false, label, reason, hint: label === "Svelte" || label === "Vue" || label === "Solid" ? "React, Preact, TypeScript and plain HTML/CSS/JS projects preview in the browser today." : HINT_SERVER };
+      return { supported: false, label, reason, hint: label === "Svelte" || label === "Vue" || label === "Solid" ? "React, Preact, TypeScript and plain HTML/CSS/JS projects preview in the browser today." : HINT_SERVER, liveServer };
     }
   }
 
@@ -133,7 +137,7 @@ export async function analyzeProject(paths: readonly string[], read: (path: stri
   if (has("react-scripts")) {
     const html = `${root}public/index.html`;
     const entry = ["src/index.tsx", "src/index.jsx", "src/index.js", "src/index.ts"].map((e) => `${root}${e}`).find((e) => set.has(e)) ?? null;
-    if (!set.has(html) || !entry) return { supported: false, label: "Create React App", reason: "Couldn't find public/index.html and src/index.* for this Create React App project.", hint: "Check the project layout." };
+    if (!set.has(html) || !entry) return { supported: false, label: "Create React App", reason: "Couldn't find public/index.html and src/index.* for this Create React App project.", hint: "Check the project layout.", liveServer };
     return { supported: true, runtime: "cra", root, html, pages: [html], entry, deps, framework, tailwind, label: "Create React App", notes };
   }
 
@@ -145,6 +149,7 @@ export async function analyzeProject(paths: readonly string[], read: (path: stri
       label: server ? "Node.js server" : "No index.html",
       reason: server ? `This looks like a ${server} server — server code doesn't run in the browser preview.` : "This package has no index.html entry page for the browser.",
       hint: server ? HINT_SERVER : "Vite and static sites need an index.html at the project root.",
+      liveServer,
     };
   }
 
