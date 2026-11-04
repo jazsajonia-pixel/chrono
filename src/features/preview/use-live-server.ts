@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWorkspace } from "@/features/workspace/context";
 import { api } from "@/lib/api";
+import { AppError } from "@/lib/errors";
 
 export type LiveServerMode = "browser" | "server";
 export type LiveServerStatus = "idle" | "starting" | "running" | "stopping" | "stopped" | "failed";
@@ -34,6 +35,8 @@ const OMIT_EXTENSIONS = new Set([
   "mov", "webm", "woff", "woff2", "ttf", "otf", "eot", "wasm", "psd",
   "sketch", "sqlite", "db",
 ]);
+
+const SKIPPABLE_FILE_ERRORS = new Set<string>(["NOT_FOUND", "BINARY_FILE", "FILE_TOO_LARGE"]);
 
 function includeInPreview(path: string): boolean {
   const parts = path.split("/");
@@ -76,6 +79,7 @@ export function useLiveServer(owner: string, repo: string) {
     }));
     try {
       const files: { path: string; content: string }[] = [];
+      const skipped: string[] = [];
       let bytes = 0;
 
       for (const path of workspace.paths) {
@@ -83,7 +87,18 @@ export function useLiveServer(owner: string, repo: string) {
         if (files.length >= MAX_FILES) {
           throw new Error("Live preview supports up to " + MAX_FILES + " text files. Exclude generated or unused files and retry.");
         }
-        const content = await workspace.getBuffer(path);
+        let content: string;
+        try {
+          content = await workspace.getBuffer(path);
+        } catch (error) {
+          // Files GitHub can't serve as text (missing at this commit, binary, over 1 MB) are left out
+          // instead of aborting the whole preview; anything else names the file that failed.
+          if (error instanceof AppError && SKIPPABLE_FILE_ERRORS.has(error.code)) {
+            skipped.push(path);
+            continue;
+          }
+          throw new Error("Couldn't load " + path + ": " + (error instanceof Error ? error.message : "unknown error"));
+        }
         const size = new TextEncoder().encode(content).byteLength;
         if (size > 500_000) throw new Error(path + " is too large to include in a live preview.");
         bytes += size;
@@ -93,6 +108,8 @@ export function useLiveServer(owner: string, repo: string) {
         files.push({ path, content });
       }
 
+      if (skipped.length) console.warn("Live preview skipped files GitHub couldn't serve as text:", skipped);
+
       const result = await api<LiveServerResponse>("/preview-server", {
         method: "POST",
         body: { action: "start", ...identity, files },
@@ -100,11 +117,13 @@ export function useLiveServer(owner: string, repo: string) {
       });
       setState((current) => ({ ...current, ...result, mode: "server", error: undefined }));
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not start the live preview.";
+      const requestId = error instanceof AppError && error.requestId ? " (request " + error.requestId + ")" : "";
       setState((current) => ({
         ...current,
         mode: "server",
         status: "failed",
-        error: error instanceof Error ? error.message : "Could not start the live preview.",
+        error: message + requestId,
       }));
     } finally {
       busy.current = false;
