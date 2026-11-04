@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { AppRoutes } from "./App";
@@ -23,8 +23,19 @@ function renderAt(path: string) {
 describe("routing", () => {
   it("renders the landing page", () => {
     renderAt("/");
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/Edit, preview and ship your GitHub repos from your phone\./);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/Build, preview and ship your GitHub projects from anywhere\./);
     expect(screen.getByTestId("button-start-building")).toBeInTheDocument();
+  });
+
+  it("landing section links scroll on the page instead of changing the route", () => {
+    const loc = renderAt("/");
+    const scroll = vi.fn();
+    const target = document.getElementById("workflow")!;
+    target.scrollIntoView = scroll;
+    fireEvent.click(screen.getByTestId("link-how-it-works"));
+    expect(scroll).toHaveBeenCalled();
+    expect(document.activeElement).toBe(target);
+    expect(loc.history?.at(-1)).toBe("/");
   });
 
   it("redirects anonymous users away from protected routes", () => {
