@@ -3,6 +3,8 @@
  * the repository is executed here.
  */
 
+import { detectLiveRuntime, type LiveRuntimeResult } from "@/lib/live-runtime";
+
 export type PreviewRuntime = "static" | "vite" | "cra" | "html-modules";
 
 export interface PreviewPlanOk {
@@ -29,8 +31,10 @@ export interface PreviewPlanUnsupported {
   label: string;
   reason: string;
   hint: string;
-  /** True only when a Node package declares a script the live sandbox can run. */
+  /** True when the live sandbox can run the project (Node script, Flutter, Dart or JVM server). */
   liveServer: boolean;
+  /** Set for Flutter, Dart and Gradle/Maven projects (decided by src/lib/live-runtime.ts). */
+  live?: LiveRuntimeResult;
 }
 
 export type PreviewPlan = PreviewPlanOk | PreviewPlanUnsupported;
@@ -83,6 +87,15 @@ function semverMajor(range: string | undefined): number | null {
  */
 export async function analyzeProject(paths: readonly string[], read: (path: string) => Promise<string | null>): Promise<PreviewPlan> {
   const set = new Set(paths);
+
+  // Flutter, Dart and Kotlin/JVM projects never run in the browser bundler; the live sandbox decides.
+  const nativeRoot = !set.has("package.json") &&
+    ["pubspec.yaml", "settings.gradle", "settings.gradle.kts", "build.gradle", "build.gradle.kts", "pom.xml"].some((p) => set.has(p));
+  if (nativeRoot) {
+    const live = await detectLiveRuntime(paths, read);
+    if (live.kind === "unsupported") return { supported: false, label: live.label, reason: live.reason, hint: live.hint, liveServer: false, live };
+    return { supported: false, label: live.label, reason: live.label + " runs on a live server, not in the browser preview.", hint: "", liveServer: true, live };
+  }
   const htmlFiles = paths.filter((p) => /\.html?$/i.test(p) && !/(^|\/)(node_modules|dist|build|\.git)\//.test(p));
 
   // Pick the app root: repo root if it has package.json/index.html, else the shallowest folder that does.

@@ -1,0 +1,54 @@
+name: Live runtimes smoke test
+
+# Runs the real live-preview start scripts (Flutter web, Dart, Kotlin/Java with Gradle or Maven)
+# in Amazon Linux 2023, the OS Vercel Sandbox uses, as an unprivileged user with sudo, and waits
+# for the preview port to answer. Manual or on changes to the runtime code; it downloads SDKs, so
+# it is slow. It doesn't exercise the Vercel Sandbox API itself.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - src/lib/live-runtime.ts
+      - netlify/lib/sandbox-preview.ts
+      - scripts/live-runtime-smoke.ts
+      - scripts/live-fixtures.sh
+      - .github/workflows/live-runtimes.yml
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: ${{ matrix.fixture }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: amazonlinux:2023
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { fixture: flutter, kind: flutter-web }
+          - { fixture: dart, kind: dart }
+          - { fixture: spring-gradle, kind: gradle }
+          - { fixture: spring-maven, kind: maven }
+          - { fixture: ktor, kind: gradle }
+          - { fixture: kotlin-wasm, kind: gradle }
+    steps:
+      - name: Base packages (what Vercel Sandbox has preinstalled)
+        run: dnf install -y -q sudo git tar gzip unzip findutils which procps-ng shadow-utils
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Sandbox user and folder
+        run: |
+          useradd -m vercel-sandbox
+          echo 'vercel-sandbox ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/vercel-sandbox
+          mkdir -p /vercel/sandbox && chown -R vercel-sandbox /vercel
+          chown -R vercel-sandbox "$GITHUB_WORKSPACE"
+      - name: Install dependencies
+        run: sudo -u vercel-sandbox env PATH="$PATH" npm ci --no-audit --no-fund
+      - name: Fixture
+        run: sudo -u vercel-sandbox env PATH="$PATH" bash scripts/live-fixtures.sh ${{ matrix.fixture }} /tmp/fixture
+      - name: Start and wait for the preview port
+        run: sudo -u vercel-sandbox env PATH="$PATH" HOME=/home/vercel-sandbox npx tsx scripts/live-runtime-smoke.ts /tmp/fixture ${{ matrix.kind }}

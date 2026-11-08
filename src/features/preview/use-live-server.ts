@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useWorkspace } from "@/features/workspace/context";
 import { api } from "@/lib/api";
 import { AppError } from "@/lib/errors";
+import { liveOmitFolders, type LiveRuntime } from "@/lib/live-runtime";
 
 export type LiveServerStatus = "idle" | "starting" | "running" | "stopping" | "stopped" | "failed";
 
@@ -15,6 +16,13 @@ interface LiveServerResponse {
   assets?: number;
   assetBytes?: number;
   skippedAssets?: string[];
+  runtime?: string;
+  label?: string;
+  /** Sandbox lifetime in minutes. */
+  minutes?: number;
+  /** Names of saved preview variables passed to this start (never values). */
+  env?: string[];
+  unreadableEnv?: string[];
 }
 
 interface LiveServerState extends LiveServerResponse {
@@ -36,7 +44,7 @@ const OMIT_EXTENSIONS = new Set([
   "png", "jpg", "jpeg", "gif", "webp", "ico", "pdf", "zip", "gz", "mp4",
   "mov", "webm", "woff", "woff2", "ttf", "otf", "eot", "wasm", "psd",
   "sketch", "sqlite", "db", "avif", "bmp", "tif", "tiff", "heic", "jfif",
-  "mp3", "wav", "ogg", "m4a", "flac", "glb", "bin",
+  "mp3", "wav", "ogg", "m4a", "flac", "glb", "bin", "jar",
 ]);
 
 const SKIPPABLE_FILE_ERRORS = new Set<string>(["NOT_FOUND", "BINARY_FILE", "FILE_TOO_LARGE"]);
@@ -67,7 +75,7 @@ function includeInPreview(path: string): boolean {
   return !OMIT_EXTENSIONS.has(extension) && !OMIT_SECRET_EXTENSIONS.has(extension);
 }
 
-export function useLiveServer(owner: string, repo: string) {
+export function useLiveServer(owner: string, repo: string, runtime?: LiveRuntime) {
   const workspace = useWorkspace();
   const [state, setState] = useState<LiveServerState>({ status: "idle" });
   const stateRef = useRef(state);
@@ -102,7 +110,10 @@ export function useLiveServer(owner: string, repo: string) {
       // Binary or oversized files: the server copies them from GitHub at this commit.
       const assets: string[] = [];
       const textPaths: string[] = [];
+      // Platform folders a runtime doesn't build (android/ and ios/ for a Flutter web build…).
+      const skipFolders = new Set(runtime ? liveOmitFolders(runtime) : []);
       for (const path of workspace.paths) {
+        if (skipFolders.has(path.split("/")[0]!)) continue;
         if (isBinaryAsset(path)) assets.push(path);
         else if (includeInPreview(path)) textPaths.push(path);
       }
@@ -167,7 +178,7 @@ export function useLiveServer(owner: string, repo: string) {
     } finally {
       busy.current = false;
     }
-  }, [workspace, owner, repo, workspace.source.commitSha]);
+  }, [workspace, owner, repo, workspace.source.commitSha, runtime]);
 
   const stop = useCallback(async () => {
     if (busy.current) return;

@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
 import { HttpError } from "./http.js";
 import { parse, pathSchema } from "./validate.js";
+import { detectLiveRuntime, LIVE_PREVIEW_PORT, type LiveRuntime } from "../../src/lib/live-runtime.js";
 
-export const PREVIEW_PORT = 3000;
+export type PreviewRunner = LiveRuntime;
+
+export const PREVIEW_PORT = LIVE_PREVIEW_PORT;
 export const MAX_PREVIEW_FILES = 350;
 export const MAX_PREVIEW_FILE_BYTES = 500_000;
 export const MAX_PREVIEW_TOTAL_BYTES = 1_800_000;
@@ -34,25 +37,6 @@ export interface PreviewFile {
   content: string;
 }
 
-export interface PreviewRunner {
-  script: "dev" | "start";
-  args: string[];
-  /**
-   * The script wraps several processes (concurrently, npm-run-all, turbo, `a && b`…), so host/port
-   * flags can't reach the dev server. Run it untouched and forward PREVIEW_PORT to whatever port the
-   * app opens (see PREVIEW_PROXY_SOURCE).
-   */
-  proxy?: boolean;
-}
-
-/** `vite …` / `next dev …` run directly (optionally behind env assignments or npx), with nothing chained. */
-function runsDirectly(command: string, binary: "vite" | "next"): boolean {
-  if (/&&|\|\||[;|&]/.test(command)) return false;
-  const words = command.trim().split(/\s+/).filter((word) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(word));
-  if (words[0] === "npx" || words[0] === "cross-env") words.shift();
-  return words[0] === binary;
-}
-
 /** Stable per-user, repository and ref identity; never expose the raw user id in sandbox names. */
 export function previewSandboxName(userId: string | number, owner: string, repo: string, ref: string): string {
   const key = [String(userId), owner.toLowerCase(), repo.toLowerCase(), ref].join(":");
@@ -71,7 +55,7 @@ const BINARY_EXTENSIONS = new Set([
   "png", "jpg", "jpeg", "gif", "webp", "ico", "pdf", "zip", "gz", "mp4",
   "mov", "webm", "woff", "woff2", "ttf", "otf", "eot", "wasm", "psd",
   "sketch", "sqlite", "db", "avif", "bmp", "tif", "tiff", "heic", "jfif",
-  "mp3", "wav", "ogg", "m4a", "flac", "glb", "bin",
+  "mp3", "wav", "ogg", "m4a", "flac", "glb", "bin", "jar",
 ]);
 
 /** Shared rule for both text files and assets: never copy credentials, VCS data or generated output. */
@@ -152,60 +136,166 @@ export function preparePreviewFiles(files: PreviewFile[]): PreviewFile[] {
   return accepted;
 }
 
-/** Determine a safe npm script and the host/port options for supported Node frameworks. */
-export function previewRunner(files: PreviewFile[]): PreviewRunner {
-  const packageFile = files.find((file) => file.path === "package.json");
-  if (!packageFile) {
-    throw new HttpError(422, "UNSUPPORTED_PROJECT", "Live Server Preview currently supports Node.js projects with a root package.json and a dev or start script.");
+/** Pick the runtime for the uploaded files (same rules as the clients, see src/lib/live-runtime.ts). */
+export async function previewRunner(files: PreviewFile[]): Promise<PreviewRunner> {
+  const byPath = new Map(files.map((file) => [file.path, file.content]));
+  const runtime = await detectLiveRuntime([...byPath.keys()], (path) => byPath.get(path) ?? null);
+  if (runtime.kind === "unsupported") {
+    throw new HttpError(422, runtime.reason.includes("not valid JSON") ? "VALIDATION_FAILED" : "UNSUPPORTED_PROJECT", runtime.reason + " " + runtime.hint);
   }
+  return runtime;
+}
 
-  let manifest: {
-    scripts?: Record<string, unknown>;
-    dependencies?: Record<string, unknown>;
-    devDependencies?: Record<string, unknown>;
-  };
-  try {
-    manifest = JSON.parse(packageFile.content) as typeof manifest;
-  } catch {
-    throw new HttpError(422, "VALIDATION_FAILED", "package.json is not valid JSON.");
-  }
+/** Sandbox lifetime: SDK installs and compiles need longer than a Node dev server. */
+export function previewTimeoutMs(runner: PreviewRunner): number {
+  return (runner.kind === "node" ? 10 : 20) * 60 * 1000;
+}
 
-  const scripts = manifest.scripts ?? {};
-  const script = typeof scripts.dev === "string" ? "dev" : typeof scripts.start === "string" ? "start" : undefined;
-  if (!script) {
-    throw new HttpError(422, "UNSUPPORTED_PROJECT", "Add a dev or start script to package.json to use Live Server Preview.");
-  }
+/** Name for the runtime in status messages. */
+export function previewKindLabel(runner: PreviewRunner): string {
+  return runner.label;
+}
 
-  const dependencies = { ...manifest.dependencies, ...manifest.devDependencies };
-  const command = String(scripts[script]);
-  if (dependencies.next) {
-    if (script === "dev" && !runsDirectly(command, "next")) return { script, args: [], proxy: true };
-    return { script, args: script === "dev" ? ["--hostname", "0.0.0.0", "--port", String(PREVIEW_PORT)] : [] };
-  }
-  if (dependencies.vite) {
-    if (script === "dev" && !runsDirectly(command, "vite")) return { script, args: [], proxy: true };
-    return { script, args: script === "dev" ? ["--host", "0.0.0.0", "--port", String(PREVIEW_PORT), "--strictPort"] : [] };
-  }
-  if (dependencies["react-scripts"]) return { script, args: [] };
-  return { script, args: [] };
+const q = (value: string) => "'" + value.replace(/'/g, "'\\''") + "'";
+
+/**
+ * Shared shell prelude. SDKs, JDKs and package caches live under $HOME/.chrono-sdk, outside the
+ * workspace folder that is reset on every start, so a resumed sandbox snapshot reuses them.
+ * `pkg` installs system packages with dnf (Vercel Sandbox is Amazon Linux 2023) or apt elsewhere.
+ */
+const PRELUDE =
+  "#!/usr/bin/env bash\n" +
+  "set -Eeuo pipefail\n" +
+  "cd /vercel/sandbox\n" +
+  "mkdir -p .chrono-preview\n" +
+  "printf 'installing\\n' > .chrono-preview/state\n" +
+  "exec > .chrono-preview/server.log 2>&1\n" +
+  "trap 'code=$?; printf \"failed\\n\" > .chrono-preview/state; printf \"\\nPreview startup failed (exit %s).\\n\" \"$code\" >> .chrono-preview/server.log; tail -n 60 .chrono-preview/server.log > .chrono-preview/error.log; exit \"$code\"' ERR\n" +
+  "SDK=\"${HOME:-/tmp}/.chrono-sdk\"\n" +
+  "mkdir -p \"$SDK\"\n" +
+  "state() { printf '%s\\n' \"$1\" > /vercel/sandbox/.chrono-preview/state; }\n" +
+  "pkg() { if command -v dnf >/dev/null 2>&1; then sudo dnf install -y -q \"$@\"; else sudo apt-get update -qq && sudo apt-get install -y -qq \"$@\"; fi; }\n" +
+  // Tools the SDK installers need; Vercel Sandbox ships them, other hosts may not.
+  "need() { for c in \"$@\"; do command -v \"$c\" >/dev/null 2>&1 || pkg \"$c\"; done; }\n";
+
+function jdkSetup(version: number): string {
+  // Corretto on Amazon Linux; OpenJDK on Debian/Ubuntu (local test runs).
+  return "state installing-sdk\n" +
+    "if command -v dnf >/dev/null 2>&1; then\n" +
+    "  [ -d /usr/lib/jvm/java-" + version + "-amazon-corretto ] || pkg java-" + version + "-amazon-corretto-devel\n" +
+    "  export JAVA_HOME=/usr/lib/jvm/java-" + version + "-amazon-corretto\n" +
+    "else\n" +
+    "  [ -d /usr/lib/jvm/java-" + version + "-openjdk-amd64 ] || pkg openjdk-" + version + "-jdk-headless\n" +
+    "  export JAVA_HOME=/usr/lib/jvm/java-" + version + "-openjdk-amd64\n" +
+    "fi\n" +
+    "export PATH=\"$JAVA_HOME/bin:$PATH\"\n" +
+    "java -version\n";
+}
+
+/** Forward PREVIEW_PORT to whatever port the app opens; `any` also accepts non-HTML (API) servers. */
+function forwarder(any: boolean): string {
+  return (any ? "CHRONO_PROXY_ANY=1 " : "") + "node .chrono-preview/proxy.mjs > .chrono-preview/proxy.log 2>&1 &\n";
 }
 
 export function previewStartScript(runner: PreviewRunner): string {
-  const command = "npm run " + runner.script + (runner.args.length ? " -- " + runner.args.join(" ") : "");
-  return "#!/usr/bin/env bash\n" +
-    "set -Eeuo pipefail\n" +
-    "cd /vercel/sandbox\n" +
-    "mkdir -p .chrono-preview\n" +
-    "printf 'installing\\n' > .chrono-preview/state\n" +
-    "exec > .chrono-preview/server.log 2>&1\n" +
-    "trap 'code=$?; printf \"failed\\n\" > .chrono-preview/state; printf \"\\nPreview startup failed (exit %s).\\n\" \"$code\" >> .chrono-preview/server.log; tail -n 60 .chrono-preview/server.log > .chrono-preview/error.log; exit \"$code\"' ERR\n" +
-    "if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi\n" +
-    "printf 'starting\\n' > .chrono-preview/state\n" +
-    (runner.proxy
-      // The forwarder owns PREVIEW_PORT; leave PORT unset so the app's own processes keep their defaults.
-      ? "node .chrono-preview/proxy.mjs > .chrono-preview/proxy.log 2>&1 &\n" + "unset PORT\n" + command + "\n"
-      : "HOST=0.0.0.0 PORT=" + PREVIEW_PORT + " " + command + "\n");
+  switch (runner.kind) {
+    case "node": {
+      const command = "npm run " + runner.script + (runner.args.length ? " -- " + runner.args.join(" ") : "");
+      return PRELUDE +
+        "if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi\n" +
+        "state starting\n" +
+        (runner.proxy
+          // The forwarder owns PREVIEW_PORT; leave PORT unset so the app's own processes keep their defaults.
+          ? forwarder(false) + "unset PORT\n" + command + "\n"
+          : "HOST=0.0.0.0 PORT=" + PREVIEW_PORT + " " + command + "\n");
+    }
+    case "flutter-web":
+      return PRELUDE +
+        "state installing-sdk\n" +
+        "need git curl unzip which\n" +
+        "export PUB_CACHE=\"$SDK/pub-cache\" FLUTTER_SUPPRESS_ANALYTICS=true CI=true\n" +
+        "if [ ! -x \"$SDK/flutter/bin/flutter\" ]; then\n" +
+        "  rm -rf \"$SDK/flutter\"\n" +
+        "  git clone --depth 1 --branch stable https://github.com/flutter/flutter.git \"$SDK/flutter\"\n" +
+        "fi\n" +
+        "export PATH=\"$SDK/flutter/bin:$PUB_CACHE/bin:$PATH\"\n" +
+        "flutter --disable-analytics >/dev/null 2>&1 || true\n" +
+        "flutter config --no-analytics --enable-web >/dev/null\n" +
+        "flutter --version\n" +
+        "state installing\n" +
+        // Projects created without web support get the standard web/ folder (index.html, manifest).
+        "[ -f web/index.html ] || flutter create --platforms web --project-name " + q(runner.projectName) + " --no-pub .\n" +
+        "flutter pub get\n" +
+        "state building\n" +
+        "flutter build web --release --no-wasm-dry-run\n" +
+        "state starting\n" +
+        "exec node .chrono-preview/static.mjs build/web\n";
+    case "dart":
+      return PRELUDE +
+        "state installing-sdk\n" +
+        "need curl unzip\n" +
+        "export PUB_CACHE=\"$SDK/pub-cache\"\n" +
+        "if [ ! -x \"$SDK/dart-sdk/bin/dart\" ]; then\n" +
+        "  arch=x64; [ \"$(uname -m)\" = aarch64 ] && arch=arm64\n" +
+        "  curl -fsSL -o /tmp/dart.zip \"https://storage.googleapis.com/dart-archive/channels/stable/release/latest/sdk/dartsdk-linux-$arch-release.zip\"\n" +
+        "  unzip -q -o /tmp/dart.zip -d \"$SDK\" && rm -f /tmp/dart.zip\n" +
+        "fi\n" +
+        "export PATH=\"$SDK/dart-sdk/bin:$PATH\"\n" +
+        "dart --disable-analytics >/dev/null 2>&1 || true\n" +
+        "dart --version\n" +
+        "state installing\n" +
+        "dart pub get\n" +
+        "state starting\n" +
+        // Most Dart servers read PORT (shelf template default 8080); the forwarder finds the real port.
+        forwarder(true) +
+        "export PORT=8080\n" +
+        "dart run " + q(runner.entry) + "\n";
+    case "gradle":
+      return PRELUDE +
+        // Install the toolchain JDK first so JAVA_HOME ends up pointing at the one that runs Gradle.
+        (runner.toolchainJdk ? jdkSetup(runner.toolchainJdk) + "TOOLCHAIN_HOME=\"$JAVA_HOME\"\n" : "") +
+        jdkSetup(runner.jdk) +
+        "export GRADLE_USER_HOME=\"$SDK/gradle\" GRADLE_OPTS=\"-Xmx1536m -Dorg.gradle.daemon=false\"\n" +
+        "chmod +x gradlew\n" +
+        "state starting\n" +
+        forwarder(!/BrowserDevelopmentRun$/.test(runner.task)) +
+        "unset PORT\n" +
+        "./gradlew --no-daemon --console=plain -Pkotlin.compiler.execution.strategy=in-process " +
+        (runner.toolchainJdk ? "-Porg.gradle.java.installations.paths=\"$TOOLCHAIN_HOME\" " : "") + q(runner.task) + "\n";
+    case "maven":
+      return PRELUDE +
+        jdkSetup(runner.jdk) +
+        "export MAVEN_OPTS=\"-Xmx1024m -Dmaven.repo.local=$SDK/m2\"\n" +
+        (runner.wrapper
+          ? "chmod +x mvnw\nMVN=./mvnw\n"
+          : "if [ ! -x \"$SDK/maven/bin/mvn\" ]; then\n" +
+            "  curl -fsSL https://archive.apache.org/dist/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz | tar -xz -C \"$SDK\"\n" +
+            "  mv \"$SDK/apache-maven-3.9.9\" \"$SDK/maven\"\n" +
+            "fi\nMVN=\"$SDK/maven/bin/mvn\"\n") +
+        "state starting\n" +
+        forwarder(true) +
+        "unset PORT\n" +
+        "\"$MVN\" -B -q -Dmaven.repo.local=\"$SDK/m2\" " + q(runner.goal) + "\n";
+  }
 }
+
+/** Static file server for build output (Flutter web): SPA fallback to index.html, wasm MIME type. */
+export const PREVIEW_STATIC_SOURCE = `import http from "node:http";
+import { createReadStream, statSync } from "node:fs";
+import { extname, join, normalize } from "node:path";
+const root = normalize(process.argv[2] || ".");
+const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".css": "text/css", ".wasm": "application/wasm", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".webp": "image/webp", ".ttf": "font/ttf", ".otf": "font/otf", ".woff": "font/woff", ".woff2": "font/woff2", ".map": "application/json", ".txt": "text/plain" };
+http.createServer((req, res) => {
+  let path = decodeURIComponent((req.url || "/").split("?")[0]);
+  let file = normalize(join(root, path));
+  if (!file.startsWith(root)) { res.writeHead(403); res.end(); return; }
+  let st = null;
+  try { st = statSync(file); if (st.isDirectory()) { file = join(file, "index.html"); st = statSync(file); } } catch { st = null; }
+  if (!st) { file = join(root, "index.html"); try { st = statSync(file); } catch { res.writeHead(404); res.end("Not found"); return; } }
+  res.writeHead(200, { "content-type": types[extname(file).toLowerCase()] || "application/octet-stream", "cache-control": "no-cache" });
+  createReadStream(file).pipe(res);
+}).listen(${PREVIEW_PORT}, "0.0.0.0", () => console.log("Serving " + root + " on http://localhost:${PREVIEW_PORT}"));
+`;
 
 /**
  * Dependency-free forwarder for wrapped dev scripts. Listens on PREVIEW_PORT and forwards HTTP and
@@ -217,7 +307,8 @@ export const PREVIEW_PROXY_SOURCE = `import http from "node:http";
 import net from "node:net";
 import { readFileSync } from "node:fs";
 const LISTEN = ${PREVIEW_PORT};
-const COMMON = [5173, 3001, 4321, 8080, 4200, 8000, 5000, 3002, 8888];
+const COMMON = [5173, 3001, 4321, 8080, 4200, 8000, 5000, 3002, 8888, 8081, 9000];
+const ANY = process.env.CHRONO_PROXY_ANY === "1";
 let target = null;
 let probing = null;
 function candidates() {
@@ -231,7 +322,7 @@ function probe(port) {
   return new Promise((resolve) => {
     const req = http.get({ host: "localhost", port, path: "/", headers: { host: "localhost:" + port, accept: "text/html" }, timeout: 1500 }, (res) => {
       res.resume();
-      resolve(String(res.headers["content-type"] || "").includes("text/html") ? port : null);
+      resolve(ANY || String(res.headers["content-type"] || "").includes("text/html") ? port : null);
     });
     req.on("error", () => resolve(null));
     req.on("timeout", () => { req.destroy(); resolve(null); });
