@@ -252,13 +252,16 @@ export function previewStartScript(runner: PreviewRunner): string {
         "dart run " + q(runner.entry) + "\n";
     case "gradle":
       return PRELUDE +
+        // Install the toolchain JDK first so JAVA_HOME ends up pointing at the one that runs Gradle.
+        (runner.toolchainJdk ? jdkSetup(runner.toolchainJdk) + "TOOLCHAIN_HOME=\"$JAVA_HOME\"\n" : "") +
         jdkSetup(runner.jdk) +
         "export GRADLE_USER_HOME=\"$SDK/gradle\" GRADLE_OPTS=\"-Xmx1536m -Dorg.gradle.daemon=false\"\n" +
         "chmod +x gradlew\n" +
         "state starting\n" +
         forwarder(!/BrowserDevelopmentRun$/.test(runner.task)) +
         "unset PORT\n" +
-        "./gradlew --no-daemon --console=plain -Pkotlin.compiler.execution.strategy=in-process " + q(runner.task) + "\n";
+        "./gradlew --no-daemon --console=plain -Pkotlin.compiler.execution.strategy=in-process " +
+        (runner.toolchainJdk ? "-Porg.gradle.java.installations.paths=\"$TOOLCHAIN_HOME\" " : "") + q(runner.task) + "\n";
     case "maven":
       return PRELUDE +
         jdkSetup(runner.jdk) +

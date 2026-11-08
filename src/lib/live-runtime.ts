@@ -18,7 +18,15 @@ export type LiveRuntime =
     }
   | { kind: "flutter-web"; label: string; projectName: string }
   | { kind: "dart"; label: string; entry: string }
-  | { kind: "gradle"; label: string; task: string; jdk: number }
+  | {
+      kind: "gradle";
+      label: string;
+      task: string;
+      /** JDK that runs Gradle (Gradle 9+ needs 17 or later). */
+      jdk: number;
+      /** Older toolchain the build compiles against, installed next to `jdk` when they differ. */
+      toolchainJdk?: number;
+    }
   | { kind: "maven"; label: string; goal: string; jdk: number; wrapper: boolean };
 
 export interface LiveRuntimeUnsupported {
@@ -146,28 +154,31 @@ async function gradleRuntime(paths: ReadonlySet<string>, read: ReadFile): Promis
   const gradle = gradleVersion(await read("gradle/wrapper/gradle-wrapper.properties"));
   const requested = requestedJdk(all);
   const modern = !gradle || gradle[0] > 8 || (gradle[0] === 8 && gradle[1] >= 5);
-  const jdk = supportedJdk(requested ?? (modern ? 21 : 17));
+  const wanted = supportedJdk(requested ?? (modern ? 21 : 17));
+  // Gradle 9 itself refuses to run on a JDK older than 17, whatever toolchain the build compiles with.
+  const jdk = gradle && gradle[0] >= 9 ? Math.max(wanted, 17) : wanted;
+  const toolchain = jdk !== wanted ? { toolchainJdk: wanted } : {};
   if (!paths.has("gradlew") || !paths.has("gradle/wrapper/gradle-wrapper.properties")) {
     return { kind: "unsupported", label: "Gradle", reason: "This Gradle project has no Gradle wrapper (gradlew).", hint: "Commit gradlew and the gradle/wrapper folder so Live server can build it." };
   }
   const find = (re: RegExp) => [...texts.entries()].find(([, t]) => re.test(t));
   const wasm = find(/\bwasmJs\s*(\(|\{)/);
   if (wasm && /\bbrowser\s*(\(|\{)/.test(wasm[1])) {
-    return { kind: "gradle", label: "Kotlin/Wasm (Compose for Web)", task: task(moduleOf(wasm[0]), "wasmJsBrowserDevelopmentRun"), jdk };
+    return { kind: "gradle", label: "Kotlin/Wasm (Compose for Web)", task: task(moduleOf(wasm[0]), "wasmJsBrowserDevelopmentRun"), jdk, ...toolchain };
   }
   const js = find(/\bjs\s*\(\s*(IR)?\s*\)\s*\{[\s\S]*?\bbrowser\b/);
-  if (js) return { kind: "gradle", label: "Kotlin/JS", task: task(moduleOf(js[0]), "jsBrowserDevelopmentRun"), jdk };
+  if (js) return { kind: "gradle", label: "Kotlin/JS", task: task(moduleOf(js[0]), "jsBrowserDevelopmentRun"), jdk, ...toolchain };
   const spring = find(/org\.springframework\.boot/);
   if (spring && !/^\s*apply\s*false/m.test(spring[1])) {
     // The root build may only declare the plugin (`apply false`); run the module that applies it.
     const applied = [...texts.entries()].find(([, t]) => /id\s*\(?\s*["']org\.springframework\.boot["']\s*\)?(?!\s*(version\s*["'][^"']+["']\s*)?apply\s*false)/.test(t)) ?? spring;
-    return { kind: "gradle", label: "Spring Boot (Gradle)", task: task(moduleOf(applied[0]), "bootRun"), jdk };
+    return { kind: "gradle", label: "Spring Boot (Gradle)", task: task(moduleOf(applied[0]), "bootRun"), jdk, ...toolchain };
   }
   const ktor = find(/io\.ktor\.plugin|ktor-server/);
   const app = find(/\bapplication\b\s*(\{|$)|id\s*\(?\s*["']application["']|`application`/m);
   if (ktor || app) {
     const [file] = app ?? ktor!;
-    return { kind: "gradle", label: ktor ? "Ktor" : "Kotlin/JVM application", task: task(moduleOf(file), "run"), jdk };
+    return { kind: "gradle", label: ktor ? "Ktor" : "Kotlin/JVM application", task: task(moduleOf(file), "run"), jdk, ...toolchain };
   }
   if (find(/com\.android\.application|androidApplication|android\s*\{/)) {
     return { kind: "unsupported", label: "Android app", reason: "This is an Android app (Kotlin/Gradle).", hint: ANDROID_HINT, android: true };

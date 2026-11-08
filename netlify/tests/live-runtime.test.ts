@@ -61,6 +61,15 @@ describe("live runtime detection", () => {
       .toMatchObject({ kind: "gradle", jdk: 17 });
   });
 
+  it("runs Gradle 9 on JDK 17+ and installs an older toolchain beside it", async () => {
+    const r = await detect({ gradlew: "", "gradle/wrapper/gradle-wrapper.properties": "gradle-9.1-bin.zip", "settings.gradle.kts": "", "composeApp/build.gradle.kts": "kotlin { jvmToolchain(11)\n wasmJs { browser() } }" });
+    expect(r).toMatchObject({ kind: "gradle", jdk: 17, toolchainJdk: 11, task: ":composeApp:wasmJsBrowserDevelopmentRun" });
+    if (r.kind !== "gradle") return;
+    const script = previewStartScript(r);
+    expect(script.indexOf("java-11")).toBeLessThan(script.indexOf("java-17"));
+    expect(script).toContain("-Porg.gradle.java.installations.paths=");
+  });
+
   it("runs Spring Boot Maven projects with the wrapper when present", async () => {
     const r = await detect({ "pom.xml": "<project><properties><java.version>17</java.version></properties><artifactId>spring-boot-starter-web</artifactId></project>", mvnw: "", ".mvn/wrapper/maven-wrapper.properties": "" });
     expect(r).toEqual({ kind: "maven", label: "Spring Boot (Maven)", goal: "spring-boot:run", jdk: 17, wrapper: true });
