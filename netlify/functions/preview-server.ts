@@ -13,7 +13,9 @@ import {
   previewRunner,
   previewSandboxName,
   previewStartScript,
+  previewTimeoutMs,
   PREVIEW_PROXY_SOURCE,
+  PREVIEW_STATIC_SOURCE,
   prepareAssetPaths,
   MAX_PREVIEW_ASSET_BYTES,
   MAX_PREVIEW_ASSET_TOTAL_BYTES,
@@ -21,6 +23,7 @@ import {
   sandboxConfigured,
   type PreviewFile,
 } from "../lib/sandbox-preview.js";
+import { loadPreviewEnv } from "../lib/preview-env.js";
 
 const fileSchema = z.object({
   path: z.string().min(1).max(1024),
@@ -48,7 +51,6 @@ type PreviewBody = z.infer<typeof bodySchema>;
 // `/vercel`, so relative paths and `.` would point outside the project folder.
 const ROOT = "/vercel/sandbox";
 const META = ROOT + "/.chrono-preview";
-const PORT_TIMEOUT = 10 * 60 * 1000;
 const SNAPSHOT_TTL = 24 * 60 * 60 * 1000;
 
 type SandboxCredentials = { token: string; teamId: string; projectId: string };
@@ -149,7 +151,8 @@ async function startPreview(req: Request, body: Extract<PreviewBody, { action: "
   await rateLimit("preview-start:" + session.user.id, 4, 60_000);
 
   const files = preparePreviewFiles(body.files as PreviewFile[]);
-  const runner = previewRunner(files);
+  const runner = await previewRunner(files);
+  const timeout = previewTimeoutMs(runner);
   const assetPaths = prepareAssetPaths(body.assets, new Set(files.map((file) => file.path)));
   const assets = await loadAssets(gh, body.owner, body.repo, body.ref, assetPaths);
   const name = previewSandboxName(session.user.id, body.owner, body.repo, body.ref);
@@ -167,7 +170,7 @@ async function startPreview(req: Request, body: Extract<PreviewBody, { action: "
       resume: true,
       image: "vercel/sandbox/node:24",
       region: "sin1",
-      timeout: PORT_TIMEOUT,
+      timeout,
       ports: [PREVIEW_PORT],
       persistent: true,
       snapshotExpiration: SNAPSHOT_TTL,
@@ -190,7 +193,10 @@ async function startPreview(req: Request, body: Extract<PreviewBody, { action: "
     await sandbox.writeFiles([
       ...files.map((file) => ({ path: ROOT + "/" + file.path, content: file.content })),
       { path: META + "/start.sh", content: previewStartScript(runner), mode: 0o755 },
-      ...(runner.proxy ? [{ path: META + "/proxy.mjs", content: PREVIEW_PROXY_SOURCE }] : []),
+      // Wrapped Node scripts, Dart and JVM servers forward the port; Flutter serves its web build.
+      ...(runner.kind !== "flutter-web" ? [{ path: META + "/proxy.mjs", content: PREVIEW_PROXY_SOURCE }] : []),
+      ...(runner.kind === "flutter-web" ? [{ path: META + "/static.mjs", content: PREVIEW_STATIC_SOURCE }] : []),
+      { path: META + "/kind", content: runner.kind + "\n" + runner.label + "\n" + Math.round(timeout / 60_000) },
       { path: META + "/ref", content: body.ref },
       { path: META + "/state", content: "queued" },
     ]);
@@ -209,11 +215,14 @@ async function startPreview(req: Request, body: Extract<PreviewBody, { action: "
     }
 
     const url = sandbox.domain(PREVIEW_PORT);
+    // The user's saved variables for this repository (decrypted here only, never logged or returned).
+    const saved = await loadPreviewEnv(session, body.owner, body.repo);
     await sandbox.runCommand({
       cmd: "bash",
       args: [META + "/start.sh"],
       cwd: ROOT,
       env: {
+        ...saved.env,
         HOST: "0.0.0.0",
         PORT: String(PREVIEW_PORT),
         CI: "1",
@@ -221,12 +230,17 @@ async function startPreview(req: Request, body: Extract<PreviewBody, { action: "
         __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: new URL(url).hostname,
       },
       detached: true,
-      timeoutMs: PORT_TIMEOUT - 10_000,
+      timeoutMs: timeout - 10_000,
     });
 
     return json({
       status: "starting",
       url,
+      runtime: runner.kind,
+      label: runner.label,
+      minutes: Math.round(timeout / 60_000),
+      env: Object.keys(saved.env).sort(),
+      ...(saved.unreadable.length ? { unreadableEnv: saved.unreadable } : {}),
       files: files.length,
       bytes: files.reduce((n, file) => n + Buffer.byteLength(file.content, "utf8"), 0),
       assets: assets.files.length,
@@ -257,6 +271,21 @@ async function stopPreview(req: Request, body: Extract<PreviewBody, { action: "s
   return json({ status: "stopped" });
 }
 
+/** Status line while the server isn't answering yet; SDK installs only happen on the first start. */
+export function startingMessage(state: string, kind: string): string {
+  if (state === "installing-sdk") {
+    return kind === "flutter-web" ? "Installing the Flutter SDK (first start only, a few minutes)…"
+      : kind === "dart" ? "Installing the Dart SDK (first start only)…"
+      : "Installing a JDK (first start only)…";
+  }
+  if (state === "building") return kind === "flutter-web" ? "Building the Flutter web app…" : "Building the project…";
+  if (state === "installing") {
+    return kind === "node" ? "Installing project dependencies…"
+      : kind === "flutter-web" || kind === "dart" ? "Getting Dart packages…" : "Installing project dependencies…";
+  }
+  return kind === "gradle" || kind === "maven" ? "Downloading dependencies and starting the server (Gradle/Maven, first start can take several minutes)…" : "Starting the project server…";
+}
+
 async function getPreview(req: Request) {
   const url = new URL(req.url);
   const owner = parse(ownerSchema, url.searchParams.get("owner"), "owner");
@@ -279,11 +308,12 @@ async function getPreview(req: Request) {
     case "aborted":
       return json({ status: "failed", message: "Vercel Sandbox stopped this preview (" + sandbox.status + "). Start it again." });
     default:
-      return json({ status: "stopped", message: "The live server stopped. Servers expire after 10 minutes; start it again." });
+      return json({ status: "stopped", message: "The live server stopped. Live servers stop after 10–20 minutes; start it again." });
   }
 
   const previewUrl = sandbox.domain(PREVIEW_PORT);
   const state = await sandbox.fs.readFile(META + "/state", "utf8").catch(() => "starting");
+  const kind = (await sandbox.fs.readFile(META + "/kind", "utf8").catch(() => "node")).split("\n")[0]!.trim();
   if (state.trim() === "failed") {
     const logs = await sandbox.fs.readFile(META + "/error.log", "utf8").catch(() => "");
     return json({
@@ -319,7 +349,7 @@ async function getPreview(req: Request) {
   return json({
     status: "starting",
     url: previewUrl,
-    message: state.trim() === "installing" ? "Installing project dependencies…" : "Starting the project server…",
+    message: startingMessage(state.trim(), kind),
     logs: logs.slice(-6000),
   });
 }

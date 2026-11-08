@@ -22,6 +22,8 @@ import githubTree from "../../netlify/functions/github-tree.js";
 import health from "../../netlify/functions/health.js";
 import skills from "../../netlify/functions/skills.js";
 import previewServer from "../../netlify/functions/preview-server.js";
+import previewEnv from "../../netlify/functions/preview-env.js";
+import githubReleases from "../../netlify/functions/github-releases.js";
 
 type VercelRequest = {
   method?: string;
@@ -92,6 +94,7 @@ function routeFor(pathname: string): Route | null {
   if (key === "client-errors") return { handler: clientErrors };
   if (key === "skills") return { handler: skills };
   if (key === "preview-server") return { handler: previewServer };
+  if (key === "preview-env") return { handler: previewEnv };
   if (key === "auth/github/start") return { handler: authGithubStart };
   if (key === "auth/github/callback") return { handler: authGithubCallback };
   if (key === "auth/logout") return { handler: authLogout };
@@ -118,6 +121,7 @@ function routeFor(pathname: string): Route | null {
       commits: githubCommits,
       file: githubFile,
       pulls: githubPulls,
+      releases: githubReleases,
       tree: githubTree,
     };
     const handler = handlers[parts[4]!];

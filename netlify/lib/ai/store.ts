@@ -72,7 +72,7 @@ function cookieStore(req: Request, session: SessionData, secret: string, note: s
 
 type Sql = NonNullable<ReturnType<typeof db>>;
 
-async function userRowId(sql: Sql, session: SessionData): Promise<number> {
+export async function userRowId(sql: Sql, session: SessionData): Promise<number> {
   const rows = (await sql`
     INSERT INTO users (github_id, login, name, avatar_url)
     VALUES (${session.user.id}, ${session.user.login}, ${session.user.name}, ${session.user.avatarUrl})

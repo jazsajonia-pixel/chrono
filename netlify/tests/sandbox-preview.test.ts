@@ -47,32 +47,37 @@ describe("Vercel live preview validation", () => {
     ])).toThrow(HttpError);
   });
 
-  it("chooses Vite and Next command arguments", () => {
-    expect(previewRunner([{
+  it("chooses Vite and Next command arguments", async () => {
+    const vite = await previewRunner([{
       path: "package.json",
       content: JSON.stringify({ scripts: { dev: "vite" }, devDependencies: { vite: "^6" } }),
-    }]).args).toContain("--host");
-    expect(previewRunner([{
+    }]);
+    expect(vite.kind === "node" && vite.args).toContain("--host");
+    const next = await previewRunner([{
       path: "package.json",
       content: JSON.stringify({ scripts: { dev: "next dev" }, dependencies: { next: "^15" } }),
-    }]).args).toContain("--hostname");
+    }]);
+    expect(next.kind === "node" && next.args).toContain("--hostname");
   });
 
-  it("forwards the port instead of passing flags when the dev script wraps several processes", () => {
-    const runner = (dev: string, deps: Record<string, string> = { vite: "^6" }) =>
-      previewRunner([{ path: "package.json", content: JSON.stringify({ scripts: { dev }, devDependencies: deps }) }]);
-    expect(runner('concurrently "npm:dev:api" "npm:dev:web"')).toEqual({ script: "dev", args: [], proxy: true });
-    expect(runner("npm run build:css && vite").proxy).toBe(true);
-    expect(runner("turbo run dev", { next: "^15" }).proxy).toBe(true);
-    expect(runner("NODE_ENV=development vite").proxy).toBeUndefined();
-    expect(runner("npx vite --open").args).toContain("--strictPort");
-    expect(runner("next dev --turbo", { next: "^15" }).args).toContain("--hostname");
+  it("forwards the port instead of passing flags when the dev script wraps several processes", async () => {
+    const runner = async (dev: string, deps: Record<string, string> = { vite: "^6" }) => {
+      const r = await previewRunner([{ path: "package.json", content: JSON.stringify({ scripts: { dev }, devDependencies: deps }) }]);
+      if (r.kind !== "node") throw new Error("expected node");
+      return r;
+    };
+    expect(await runner('concurrently "npm:dev:api" "npm:dev:web"')).toEqual({ kind: "node", label: "Vite", script: "dev", args: [], proxy: true });
+    expect((await runner("npm run build:css && vite")).proxy).toBe(true);
+    expect((await runner("turbo run dev", { next: "^15" })).proxy).toBe(true);
+    expect((await runner("NODE_ENV=development vite")).proxy).toBeUndefined();
+    expect((await runner("npx vite --open")).args).toContain("--strictPort");
+    expect((await runner("next dev --turbo", { next: "^15" })).args).toContain("--hostname");
 
-    const script = previewStartScript(runner('concurrently "a" "b"'));
+    const script = previewStartScript(await runner('concurrently "a" "b"'));
     expect(script).toContain("node .chrono-preview/proxy.mjs");
     expect(script).toContain("unset PORT");
     expect(script.trim().endsWith("npm run dev")).toBe(true);
-    expect(previewStartScript(runner("vite"))).toContain("PORT=3000 npm run dev -- --host 0.0.0.0 --port 3000 --strictPort");
+    expect(previewStartScript(await runner("vite"))).toContain("PORT=3000 npm run dev -- --host 0.0.0.0 --port 3000 --strictPort");
   });
 
   it("ships a forwarder that is valid JavaScript and listens on the preview port", () => {
@@ -81,9 +86,9 @@ describe("Vercel live preview validation", () => {
     expect(PREVIEW_PROXY_SOURCE).toContain("const LISTEN = 3000");
   });
 
-  it("rejects malformed manifests and unsupported projects", () => {
-    expect(() => previewRunner([{ path: "package.json", content: "{" }])).toThrow(HttpError);
-    expect(() => previewRunner([{ path: "README.md", content: "# no app" }])).toThrow(HttpError);
+  it("rejects malformed manifests and unsupported projects", async () => {
+    await expect(previewRunner([{ path: "package.json", content: "{" }])).rejects.toThrow(HttpError);
+    await expect(previewRunner([{ path: "README.md", content: "# no app" }])).rejects.toThrow(HttpError);
   });
 
   it("only sends IPv4 CIDRs in the network policy (the Sandbox API rejects IPv6)", () => {

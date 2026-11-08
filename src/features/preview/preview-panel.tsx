@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { AlertTriangle, Code2, ExternalLink, Info, Loader2, Maximize2, Minimize2, Monitor, RotateCw, ServerOff, Smartphone, Sparkles, Terminal, X } from "lucide-react";
+import { AlertTriangle, Code2, ExternalLink, Info, KeyRound, Loader2, Maximize2, Minimize2, Monitor, RotateCw, ServerOff, Smartphone, Sparkles, Terminal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/ui/sheet";
 import { useWorkspace } from "@/features/workspace/context";
@@ -9,6 +9,8 @@ import { safeStorage } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { usePreview, type ConsoleEntry, type RuntimeError } from "./use-preview";
 import { useLiveServer } from "./use-live-server";
+import { AndroidReleases, LiveEnvSheet } from "./live-extras";
+import { isHeavyRuntime, liveStartEstimate, type LiveRuntime } from "@/lib/live-runtime";
 
 /**
  * Sandbox flags: scripts run, but WITHOUT allow-same-origin the frame gets an opaque origin — it can't
@@ -90,7 +92,10 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
   const ws = useWorkspace();
   const [, navigate] = useLocation();
   const p = usePreview({ assetUrl });
-  const live = useLiveServer(owner, repo);
+  const nativeLive = p.state.status === "unsupported" ? p.state.plan.live : undefined;
+  const liveRuntime: LiveRuntime | undefined = nativeLive && nativeLive.kind !== "unsupported" ? nativeLive : undefined;
+  const live = useLiveServer(owner, repo, liveRuntime);
+  const [envOpen, setEnvOpen] = useState(false);
   const [device, setDevice] = useState<Device>("fit");
   const [full, setFull] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(false);
@@ -100,9 +105,11 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
 
   const state = p.state;
   const usesLiveServer = state.status === "unsupported" && state.plan.liveServer;
+  const heavy = liveRuntime ? isHeavyRuntime(liveRuntime) : false;
   useEffect(() => {
-    if (usesLiveServer && live.state.status === "idle") void live.start();
-  }, [usesLiveServer, live.state.status, live.start]);
+    // Node dev servers start on their own; SDK runtimes (Flutter, Dart, JVM) take minutes, so they wait for Start.
+    if (usesLiveServer && !heavy && live.state.status === "idle") void live.start();
+  }, [usesLiveServer, heavy, live.state.status, live.start]);
   const result = state.status === "ready" ? state.result : state.status === "building" ? state.previous : null;
   const plan = state.status === "ready" || state.status === "building" ? state.plan : state.status === "error" ? state.plan : null;
   const errorCount = p.logs.filter((l) => l.level === "error").length;
@@ -135,7 +142,8 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
           <h2 className="mt-3 text-base font-semibold">{state.plan.label} can't be previewed in the browser</h2>
           <p className="mt-2 text-sm text-muted-foreground">{state.plan.reason}</p>
           <p className="mt-2 text-sm text-muted-foreground">{state.plan.hint}</p>
-          <p className="mt-4 text-xs text-muted-foreground">Supported today: HTML/CSS/JS, Vite (React, Preact, TypeScript), Create React App.</p>
+          <p className="mt-4 text-xs text-muted-foreground">Browser preview: HTML/CSS/JS, Vite (React, Preact, TypeScript), Create React App. Live server: Node scripts, Flutter web, Dart servers, Kotlin/Java with Gradle or Maven.</p>
+          {nativeLive?.kind === "unsupported" && nativeLive.android ? <AndroidReleases owner={owner} repo={repo} /> : null}
           <div className="mt-4 grid grid-cols-2 gap-2">
             <Button asChild variant="secondary">
               <Link href={projectPath(owner, repo, "files")}>
@@ -210,6 +218,9 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
                 {live.state.status === "failed" ? "Retry" : "Start"}
               </Button>
             )}
+            <Button variant="ghost" size="icon" aria-label="Preview variables" onClick={() => setEnvOpen(true)} data-testid="button-live-env">
+              <KeyRound />
+            </Button>
             {live.state.url ? (
               <Button variant="ghost" size="icon" aria-label="Open live preview in new tab" onClick={() => window.open(live.state.url, "_blank", "noopener,noreferrer")} data-testid="button-open-live-preview">
                 <ExternalLink />
@@ -300,7 +311,7 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
                   {live.state.status === "starting" ? (live.state.message ?? "Starting your project…")
                     : live.state.status === "failed" ? (live.state.error ?? live.state.message ?? "The live server could not start.")
                     : live.state.status === "stopping" ? "Stopping your server…"
-                    : live.state.status === "idle" ? "Run this project's dev server in a cloud sandbox."
+                    : live.state.status === "idle" ? (liveRuntime && heavy ? `Build and run this ${liveRuntime.label} project in a cloud sandbox. First start takes ${liveStartEstimate(liveRuntime)}.` : "Run this project's dev server in a cloud sandbox.")
                     : (live.state.message ?? "Your live server is stopped.")}
                 </p>
                 {live.state.status === "idle" || live.state.status === "stopped" ? (
@@ -309,7 +320,7 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
                   </Button>
                 ) : null}
                 <p className="text-xs text-muted-foreground">
-                  Chrono copies current editor files, including unsaved edits, into an isolated Vercel Sandbox. The server expires after 10 minutes. Anyone with the preview URL can view the site, so do not put secrets in project files.
+                  Chrono copies current editor files, including unsaved edits, into an isolated Vercel Sandbox. The server expires after {heavy ? 20 : 10} minutes. Anyone with the preview URL can view the site, so do not put secrets in project files; add development credentials under Preview variables instead.
                 </p>
                 {live.state.logs ? (
                   <details className="rounded-md border text-left">
@@ -385,6 +396,8 @@ export function PreviewPanel({ owner, repo, assetUrl }: { owner: string; repo: s
           Sandboxed · includes unsaved edits · {result.modules} modules{result.packages.length ? ` · ${result.packages.length} npm packages via esm.sh` : ""} · {result.durationMs} ms
         </p>
       ) : null}
+
+      {usesLiveServer ? <LiveEnvSheet owner={owner} repo={repo} open={envOpen} onOpenChange={setEnvOpen} /> : null}
 
       <BottomSheet open={consoleOpen} onOpenChange={setConsoleOpen} title="Console" description="Output from the preview (sandboxed).">
         {p.logs.length === 0 ? (
