@@ -8,6 +8,7 @@ import { assertSameOrigin, rateLimit } from "../lib/security.js";
 import { readJson } from "../lib/validate.js";
 import { agentStep } from "../lib/ai/agent-step.js";
 import { systemPrompt } from "../lib/ai/agent-prompt.js";
+import { KNOWLEDGE_LIMITS } from "../../src/lib/knowledge.js";
 import { resolveProvider } from "../lib/ai/resolve.js";
 import { providerIdSchema } from "../lib/ai/schemas.js";
 import { resolveSkills } from "../../src/lib/skills.js";
@@ -53,6 +54,17 @@ const bodySchema = z
     }),
     messages: z.array(message).min(1).max(MAX_MESSAGES),
     skillIds: z.array(z.string().max(60)).max(40).default([]),
+    // The user's on-device knowledge base (src/lib/knowledge.ts): only the notes picked for this chat.
+    knowledge: z
+      .object({
+        autoSave: z.boolean(),
+        more: z.number().int().min(0).max(10_000),
+        notes: z
+          .array(z.object({ id: z.string().max(40), title: z.string().max(KNOWLEDGE_LIMITS.title), body: z.string().max(KNOWLEDGE_LIMITS.body), scope: z.enum(["global", "project"]), updatedAt: z.string().max(40) }))
+          .max(KNOWLEDGE_LIMITS.promptNotes)
+          .refine((notes) => notes.reduce((n, x) => n + x.title.length + x.body.length, 0) <= KNOWLEDGE_LIMITS.promptChars + 2_000, "Too much knowledge for one request."),
+      })
+      .optional(),
   })
   .strict();
 
@@ -87,9 +99,9 @@ export default handle(["POST"], async (req) => {
   // Only skills that exist (built-in or this user's own) reach the prompt; stale ids are ignored.
   const userSkills = body.skillIds.some((id) => id.startsWith("u_")) ? (await loadSkillsSafe(req, session)).custom : [];
   const skills = resolveSkills(body.skillIds, userSkills);
-  const tools = toolsForMode(body.mode);
+  const tools = toolsForMode(body.mode, { enabled: !!body.knowledge, autoSave: !!body.knowledge?.autoSave });
   const input = {
-    system: systemPrompt(body.mode, body.project, skills),
+    system: systemPrompt(body.mode, body.project, skills, body.knowledge),
     messages,
     tools,
     maxTokens: 8192,

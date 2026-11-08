@@ -33,6 +33,7 @@ function ActivityCard({ task, onRetry, changedFilesOverride, messageStartIndex }
   const changedFiles = changedFilesOverride ?? Object.values(task.proposal).filter((file) => file.decision !== "rejected").length;
   const lastUserMessageIndex = task.messages.map((message, index) => (message.role === "user" ? index : -1)).reduce((last, index) => Math.max(last, index), 0);
   const technicalMessages = task.messages.slice(messageStartIndex ?? task.activityStartMessageIndex ?? lastUserMessageIndex);
+  const knowledgeSaves = technicalMessages.flatMap((message) => (message.role === "assistant" ? (message.toolCalls ?? []) : [])).filter((call) => call.name === "save_knowledge");
   const validation = [...activities].reverse().find((item) => item.tool === "request_preview" && (item.status === "completed" || item.status === "failed"));
   const currentTitle = active?.title ?? (task.status === "running" ? "Thinking through your request" : task.status === "awaiting_plan" ? "Waiting for your approval" : task.status === "error" ? "Request ended with an error" : task.status === "stopped" ? "Request stopped" : task.status === "step_limit" ? "Request paused" : "Work complete");
   const statusIcon = (item: AgentActivity) => {
@@ -64,6 +65,12 @@ function ActivityCard({ task, onRetry, changedFilesOverride, messageStartIndex }
             </li>
           ))}
         </ol>
+      ) : null}
+      {/* Knowledge saves stay visible (with Undo) so nothing is remembered silently. */}
+      {!detailsOpen && knowledgeSaves.length ? (
+        <ul className="mt-3 space-y-1.5" aria-label="Saved to knowledge" data-testid="list-knowledge-saves">
+          {knowledgeSaves.map((call) => <ToolRow key={call.id} call={call} result={resultsById(task.messages).get(call.id)} running={task.status === "running"} />)}
+        </ul>
       ) : null}
       {activities.length > 0 ? (
         <button type="button" onClick={() => setDetailsOpen((open) => !open)} className="mt-3 inline-flex min-h-9 items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground" aria-expanded={detailsOpen}>

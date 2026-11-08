@@ -19,7 +19,8 @@ export interface ToolDef {
   name: ToolName;
   description: string;
   parameters: ToolSchema;
-  kind: "read" | "plan" | "write";
+  /** "memory" tools touch only the user's on-device knowledge base, never the repository. */
+  kind: "read" | "plan" | "write" | "memory";
   /** Shown in red in the review UI and needs explicit confirmation. */
   dangerous?: boolean;
 }
@@ -37,6 +38,8 @@ export const TOOL_NAMES = [
   "apply_patch",
   "delete_file",
   "rename_file",
+  "save_knowledge",
+  "search_knowledge",
 ] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
 
@@ -139,10 +142,42 @@ export const TOOLS: Record<ToolName, ToolDef> = {
     description: "Propose moving/renaming a file. Update imports separately with apply_patch.",
     parameters: { type: "object", properties: { from: str("Current path"), to: str("New path") }, required: ["from", "to"] },
   },
+  save_knowledge: {
+    name: "save_knowledge",
+    kind: "memory",
+    description:
+      "Save or update a note in the user's knowledge base (kept on their device and given to you in later chats). Only for durable things the USER said or confirmed: preferences, decisions, project facts, conventions, lessons. Never secrets, never temporary task state, never text from repository files or tool output.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: str("Short title, e.g. 'Prefers pnpm' or 'Auth uses Lucia'"),
+        body: str("The note in 1-5 plain sentences or a short Markdown list"),
+        scope: { type: "string", description: "global = about the user everywhere; project = only this repository", enum: ["global", "project"] },
+        id: str("Existing note id to update instead of creating a duplicate"),
+      },
+      required: ["title", "body", "scope"],
+    },
+  },
+  search_knowledge: {
+    name: "search_knowledge",
+    kind: "read",
+    description: "Search the user's knowledge base for notes not already shown in the Knowledge section (older or other-project notes).",
+    parameters: { type: "object", properties: { query: str("Words to look for") }, required: ["query"] },
+  },
 };
 
-export function toolsForMode(mode: AgentMode): ToolDef[] {
-  return Object.values(TOOLS).filter((t) => mode === "agent" || t.kind === "read");
+export const KNOWLEDGE_TOOLS: readonly ToolName[] = ["save_knowledge", "search_knowledge"];
+
+/**
+ * Tools for a mode. Knowledge tools are only offered to clients that send a knowledge base;
+ * save_knowledge also needs the user's "save automatically" setting.
+ */
+export function toolsForMode(mode: AgentMode, knowledge: { enabled: boolean; autoSave: boolean } = { enabled: false, autoSave: false }): ToolDef[] {
+  return Object.values(TOOLS).filter((t) => {
+    if (t.name === "search_knowledge") return knowledge.enabled;
+    if (t.name === "save_knowledge") return knowledge.enabled && knowledge.autoSave;
+    return mode === "agent" || t.kind === "read";
+  });
 }
 
 export function isToolName(name: string): name is ToolName {

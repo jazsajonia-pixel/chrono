@@ -14,6 +14,7 @@ import { applyEdits, PatchError, propose, proposalFiles, statusOf, type Proposal
  */
 
 export interface WorkspaceView {
+  knowledge?: KnowledgeTools;
   paths: () => string[];
   /** Current content the user sees (draft → saved → base). Rejects for binary / too-large files. */
   read: (path: string) => Promise<string>;
@@ -21,6 +22,13 @@ export interface WorkspaceView {
   baseSize?: (path: string) => number | undefined;
   /** Runs a built preview briefly in a hidden sandboxed frame (browser only). */
   probe?: (result: import("@/features/preview/bundler").BuildResult) => Promise<import("@/features/preview/probe").ProbeReport>;
+}
+
+/** The user's on-device knowledge base, when the client has one (see src/lib/knowledge.ts). */
+export interface KnowledgeTools {
+  /** Saves (or updates) a note; `callId` lets the chat offer Undo for this save. Throws KnowledgeError. */
+  save: (note: { id?: string; title: string; body: string; scope: "global" | "project" }, callId: string) => import("@/lib/knowledge").KnowledgeNote;
+  search: (query: string) => import("@/lib/knowledge").KnowledgeNote[];
 }
 
 export interface ToolResult {
@@ -46,6 +54,8 @@ const schemas = {
   apply_patch: z.object({ path: z.string().min(1).max(1024), edits: z.array(z.object({ find: z.string().max(200_000), replace: z.string().max(200_000) })).min(1).max(50) }),
   delete_file: z.object({ path: z.string().min(1).max(1024), reason: z.string().max(1000).optional() }),
   rename_file: z.object({ from: z.string().min(1).max(1024), to: z.string().min(1).max(1024) }),
+  save_knowledge: z.object({ title: z.string().min(1).max(200), body: z.string().min(1).max(8000), scope: z.enum(["global", "project"]), id: z.string().max(40).optional() }),
+  search_knowledge: z.object({ query: z.string().min(1).max(500) }),
 } satisfies Record<ToolName, z.ZodTypeAny>;
 
 class ToolError extends Error {}
@@ -101,8 +111,8 @@ function underPrefix(path: string, prefix?: string): boolean {
   return !p || path === p || path.startsWith(`${p}/`);
 }
 
-async function exec(name: ToolName, args: Record<string, unknown>, ws: WorkspaceView, proposal: Proposal, mode: AgentMode): Promise<{ content: string; proposal: Proposal }> {
-  if (TOOLS[name].kind !== "read" && mode !== "agent") throw new ToolError(`${name} is only available in Agent mode.`);
+async function exec(name: ToolName, args: Record<string, unknown>, ws: WorkspaceView, proposal: Proposal, mode: AgentMode, callId = ""): Promise<{ content: string; proposal: Proposal }> {
+  if ((TOOLS[name].kind === "write" || TOOLS[name].kind === "plan") && mode !== "agent") throw new ToolError(`${name} is only available in Agent mode.`);
   const parsed = schemas[name].safeParse(args);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
@@ -111,6 +121,21 @@ async function exec(name: ToolName, args: Record<string, unknown>, ws: Workspace
   const a: unknown = parsed.data;
 
   switch (name) {
+    case "save_knowledge":
+    case "search_knowledge": {
+      if (!ws.knowledge) throw new ToolError("The knowledge base isn't available in this client.");
+      const { describeNote, KnowledgeError } = await import("@/lib/knowledge");
+      if (name === "search_knowledge") {
+        const found = ws.knowledge.search((a as z.infer<typeof schemas.search_knowledge>).query);
+        return { content: found.length ? `${found.length} note(s):\n\n${found.map(describeNote).join("\n\n")}` : "No matching notes.", proposal };
+      }
+      try {
+        const n = ws.knowledge.save(a as z.infer<typeof schemas.save_knowledge>, callId);
+        return { content: `Saved to the user's knowledge base: ${describeNote(n)}`, proposal };
+      } catch (err) {
+        throw new ToolError(err instanceof KnowledgeError ? `Not saved: ${err.message}` : "Not saved: the knowledge base couldn't be written.");
+      }
+    }
     case "list_files": {
       const { path, pattern } = a as z.infer<typeof schemas.list_files>;
       const re = pattern ? globToRegExp(pattern) : null;
@@ -315,7 +340,7 @@ export async function executeTool(call: ToolCall, ws: WorkspaceView, proposal: P
     return { content: call.rawArgs?.startsWith("Tool ") ? call.rawArgs : "The tool arguments were not valid JSON (the response may have been cut off). Retry with smaller edits via apply_patch.", isError: true, proposal };
   }
   try {
-    const r = await exec(call.name, call.args, ws, proposal, mode);
+    const r = await exec(call.name, call.args, ws, proposal, mode, call.id);
     return { ...r, isError: false };
   } catch (err) {
     return { content: err instanceof ToolError ? err.message : `Tool failed: ${err instanceof Error ? err.message : "unknown error"}`, isError: true, proposal };

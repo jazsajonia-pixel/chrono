@@ -262,4 +262,30 @@ describe("POST /api/ai/agent", () => {
     expect(ag).toContain("propose_plan");
     for (const p of [ask, ag]) expect(p).toMatch(/prompt injection/i);
   });
+
+  it("knowledge: sends picked notes in the prompt and offers save only when auto-save is on", async () => {
+    const reply = () => gh({ model: "m", choices: [{ message: { content: "ok" }, finish_reason: "stop" }], usage: {} });
+    const calls = mockGitHub({ "POST /v1/chat/completions": reply });
+    const knowledge = { autoSave: true, more: 2, notes: [{ id: "k_1", title: "Package manager", body: "Use pnpm, not npm.", scope: "project", updatedAt: "2026-11-08T00:00:00.000Z" }] };
+    expect((await agent(req({ providerId: "platform:openai", mode: "agent", project, messages: [user("add a test")], knowledge }))).status).toBe(200);
+    const sent = (n: number) => JSON.parse(String(calls[n]!.init!.body)) as { messages: { content: string }[]; tools: { function: { name: string } }[] };
+    expect(sent(0).messages[0]!.content).toContain("Use pnpm, not npm.");
+    expect(sent(0).messages[0]!.content).toMatch(/not unquestionable truth|may be out of date|stale/i);
+    expect(sent(0).tools.map((t) => t.function.name)).toEqual(expect.arrayContaining(["save_knowledge", "search_knowledge"]));
+
+    expect((await agent(req({ providerId: "platform:openai", mode: "ask", project, messages: [user("x")], knowledge: { ...knowledge, autoSave: false } }))).status).toBe(200);
+    const off = sent(1).tools.map((t) => t.function.name);
+    expect(off).toContain("search_knowledge");
+    expect(off).not.toContain("save_knowledge");
+
+    // No knowledge sent (turned off, or an older client) → neither tool exists.
+    expect((await agent(req({ providerId: "platform:openai", mode: "agent", project, messages: [user("x")] }))).status).toBe(200);
+    expect(sent(2).tools.map((t) => t.function.name)).not.toContain("search_knowledge");
+    expect(sent(2).messages[0]!.content).not.toContain("## Knowledge base");
+  });
+
+  it("knowledge: rejects oversized payloads", async () => {
+    const notes = Array.from({ length: 41 }, (_, i) => ({ id: `k_${i}`, title: "t", body: "b", scope: "global", updatedAt: "2026-11-08T00:00:00.000Z" }));
+    expect((await agent(req({ mode: "ask", project, messages: [user("x")], knowledge: { autoSave: true, more: 0, notes } }))).status).toBe(422);
+  });
 });

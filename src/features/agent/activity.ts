@@ -47,6 +47,10 @@ export function describeActivity(call: ToolCall): { title: string; detail?: stri
       return { title: "Preparing a file deletion", detail: path || undefined };
     case "rename_file":
       return { title: "Preparing a file rename", detail: `${text(args.from)} → ${text(args.to)}` };
+    case "save_knowledge":
+      return { title: "Saving to your knowledge base", detail: text(args.title) || undefined };
+    case "search_knowledge":
+      return { title: "Checking your knowledge base", detail: text(args.query) ? `Looking for “${text(args.query)}”` : undefined };
     default:
       return { title: "Working on your request" };
   }
@@ -79,6 +83,10 @@ export function summarizeActivity(call: ToolCall, content: string, failed: boole
     case "delete_file":
     case "rename_file":
       return "Change prepared for your review";
+    case "save_knowledge":
+      return `Saved “${text(call.args?.title)}”`;
+    case "search_knowledge":
+      return content.startsWith("No matching") ? "Nothing saved about this yet" : "Found saved notes";
     default:
       return "Step completed";
   }
