@@ -3,6 +3,8 @@ import { api } from "@/lib/api";
 import { useWorkspace } from "@/features/workspace/context";
 import { detectProjectKindFromPaths } from "@/lib/tree";
 import { enabledSkillIds } from "@/features/skills/use-skills";
+import { useSession } from "@/stores/session";
+import { knowledgePayload, knowledgeTools } from "@/features/knowledge/store";
 import type { AgentAttachment, AgentMode, AgentProjectContext, AgentStepResponse } from "@/types/agent";
 import { advance, answerPlan, closeOpenCalls, withUserMessage, type StepFn } from "./runner";
 import { hasConflict, mergeDecisions, pendingFiles, setDecision, type ProposedFile } from "./proposal";
@@ -24,8 +26,16 @@ const ATTACH_LIMIT = 40_000;
  * Agent controller for one workspace: task list, the running loop, plan approval, and applying
  * accepted proposal files to the workspace.
  */
+/** Text of the latest user message (what the knowledge notes are ranked against). */
+function lastUserText(messages: readonly { role: string; content?: string }[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) if (messages[i]!.role === "user") return messages[i]!.content ?? "";
+  return "";
+}
+
 export function useAgent(project: AgentProject) {
   const ws = useWorkspace();
+  const { session } = useSession();
+  const userId = session.mode === "github" ? session.user.id : null;
   const wsRef = useRef(ws);
   wsRef.current = ws;
   const key = ws.source.storageKey;
@@ -75,9 +85,10 @@ export function useAgent(project: AgentProject) {
       read: (p) => wsRef.current.getBuffer(p),
       changes: () => wsRef.current.changes,
       baseSize: (p) => wsRef.current.source.baseSizes?.get(p),
+      knowledge: userId !== null ? knowledgeTools(userId, { owner: project.owner, repo: project.repo }) : undefined,
       probe: async (result) => (await import("@/features/preview/probe")).probePreview(result),
     }),
-    [],
+    [userId, project.owner, project.repo],
   );
 
   const context = useCallback(
@@ -94,8 +105,8 @@ export function useAgent(project: AgentProject) {
   );
 
   const step = useCallback<StepFn>(
-    (t, messages, signal) => api<AgentStepResponse>("/ai/agent", { method: "POST", body: { mode: t.mode, project: context(), messages, skillIds: enabledSkillIds() }, timeoutMs: 115_000, signal }),
-    [context],
+    (t, messages, signal) => api<AgentStepResponse>("/ai/agent", { method: "POST", body: { mode: t.mode, project: context(), messages, skillIds: enabledSkillIds(), knowledge: userId !== null ? knowledgePayload(userId, project, lastUserText(messages)) : undefined }, timeoutMs: 115_000, signal }),
+    [context, userId, project],
   );
 
   const run = useCallback(

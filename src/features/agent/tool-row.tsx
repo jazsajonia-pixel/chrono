@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { CheckCircle2, ChevronDown, FilePen, FilePlus2, FileSearch, FileText, FileX2, FolderTree, GitCompare, Loader2, MonitorPlay, Package, Replace, XCircle } from "lucide-react";
+import { BookMarked, BookOpen, CheckCircle2, ChevronDown, FilePen, FilePlus2, FileSearch, FileText, FileX2, FolderTree, GitCompare, Loader2, MonitorPlay, Package, Replace, XCircle } from "lucide-react";
 import { TOOLS, isToolName, type ToolName } from "@/lib/agent-tools";
 import { cn } from "@/lib/utils";
+import { canUndoSave, undoSave } from "@/features/knowledge/store";
 import type { AgentMessage, ToolCall } from "@/types/agent";
 
 const ICON: Record<ToolName, typeof FileText> = {
@@ -17,6 +18,8 @@ const ICON: Record<ToolName, typeof FileText> = {
   apply_patch: Replace,
   delete_file: FileX2,
   rename_file: FilePen,
+  save_knowledge: BookMarked,
+  search_knowledge: BookOpen,
 };
 
 function s(v: unknown): string {
@@ -49,9 +52,25 @@ export function describeCall(c: ToolCall): string {
       return `Delete ${s(a.path)}`;
     case "rename_file":
       return `Rename ${s(a.from)} → ${s(a.to)}`;
+    case "save_knowledge":
+      return `Saved to knowledge: ${s(a.title)}`;
+    case "search_knowledge":
+      return `Search knowledge for “${s(a.query)}”`;
     default:
       return c.name;
   }
+}
+
+/** Undo for a note the agent just saved (restores the previous version, or removes a new note). */
+function UndoSave({ callId }: { callId: string }) {
+  const [state, setState] = useState<"ready" | "undone" | "gone">(() => (canUndoSave(callId) ? "ready" : "gone"));
+  if (state === "gone") return null;
+  if (state === "undone") return <span className="shrink-0 pr-3 text-xs text-muted-foreground">Undone</span>;
+  return (
+    <button type="button" data-testid="undo-save-knowledge" onClick={() => setState(undoSave(callId) ? "undone" : "gone")} className="mr-1 shrink-0 rounded-sm px-2 py-1 text-xs font-medium text-primary hover:bg-muted">
+      Undo
+    </button>
+  );
 }
 
 /** One logged tool call. Every call the model makes is shown; tap to see arguments and output. */
@@ -66,7 +85,8 @@ export function ToolRow({ call, result, running }: { call: ToolCall; result?: Ex
 
   return (
     <li className="rounded-md border bg-surface" data-testid={`tool-${call.name}`}>
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left">
+      <div className="flex items-center">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex min-h-11 min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left">
         <Icon className={cn("size-4 shrink-0", danger ? "text-danger" : write ? "text-primary" : "text-muted-foreground")} aria-hidden />
         <span className="min-w-0 flex-1 truncate font-mono text-xs">{describeCall(call)}</span>
         {write && status === "ok" ? <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-primary">proposed</span> : null}
@@ -75,6 +95,8 @@ export function ToolRow({ call, result, running }: { call: ToolCall; result?: Ex
         {status === "error" ? <XCircle className="size-4 shrink-0 text-danger" aria-label="Failed" /> : null}
         <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} aria-hidden />
       </button>
+        {call.name === "save_knowledge" && status === "ok" ? <UndoSave callId={call.id} /> : null}
+      </div>
       {open ? (
         <div className="space-y-2 border-t px-3 py-2">
           <p className="font-mono text-[11px] text-muted-foreground">{call.name}</p>

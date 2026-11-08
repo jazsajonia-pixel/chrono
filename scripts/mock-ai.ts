@@ -44,6 +44,10 @@ function agentReply(model: string, tools: string[], messages: { role: string; co
     usage,
   });
   const canWrite = tools.includes("apply_patch");
+  // "Remember …" exercises the knowledge base: one save_knowledge call, then a short answer.
+  if (/\bremember\b/i.test(messages[lastUser]?.content ?? "") && tools.includes("save_knowledge")) {
+    return step === 0 ? msg(null, [call("save_knowledge", { title: "Package manager", body: "Use pnpm, not npm.", scope: "project" })]) : msg("Saved that to your knowledge base. (mock answer)");
+  }
   if (lastTool.includes("did NOT approve")) return msg("Understood — tell me what to change and I'll make a new plan.");
   switch (step) {
     case 0:

@@ -1,13 +1,14 @@
 import { APP_VERSION } from "@/lib/monitoring";
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { ChevronRight, LogOut, Moon, Sparkles, Sun } from "lucide-react";
+import { BookMarked, ChevronRight, LogOut, Moon, Sparkles, Sun } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { ActiveProviderLink } from "@/features/ai/active-provider";
 import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/ui/sheet";
 import { BackendStatus } from "@/features/settings/backend-status";
 import { useSession } from "@/stores/session";
+import { useKnowledge } from "@/features/knowledge/store";
 import { useTheme } from "@/stores/theme";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -22,6 +23,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { session, signOut } = useSession();
+  const knowledge = useKnowledge(session.mode === "github" ? session.user.id : null);
+  const knowledgeLine = !knowledge.settings.enabled ? "Off" : `${knowledge.notes.length} note${knowledge.notes.length === 1 ? "" : "s"} · this browser`;
   const [, navigate] = useLocation();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -54,6 +57,12 @@ export default function SettingsPage() {
             <Link href="/app/settings/ai">
               <span className="flex items-center gap-2"><Sparkles className="size-4 text-primary" aria-hidden /> Manage providers</span>
               <span className="flex items-center gap-1 text-xs text-muted-foreground">Add your own key <ChevronRight className="size-4" aria-hidden /></span>
+            </Link>
+          </Button>
+          <Button asChild variant="secondary" className="w-full justify-between" data-testid="link-settings-knowledge">
+            <Link href="/app/knowledge">
+              <span className="flex items-center gap-2"><BookMarked className="size-4 text-primary" aria-hidden /> Knowledge</span>
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">{knowledgeLine} <ChevronRight className="size-4" aria-hidden /></span>
             </Link>
           </Button>
         </div>
